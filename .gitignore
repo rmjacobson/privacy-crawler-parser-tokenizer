@@ -1,0 +1,21 @@
+# Archive
+archive
+
+# Config files
+creds.json
+
+# Virtual Environment
+venv
+
+# Keys
+*.pem
+
+# Text Editors / IDEs
+.vscode
+.ipynb_checkpoints/
+
+# Bytecode
+*.DS_Store
+__pycache__
+*.pyc
+*.zip

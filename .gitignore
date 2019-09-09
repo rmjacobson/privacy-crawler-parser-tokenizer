@@ -1,12 +1,15 @@
 # Dataset
 data/policies/html
 data/policies/text
+data/policies/privacy_policies_html
+data/policies/privacy_policies_text
 
 # Archive
 archive
 
-# Config files
+# Config Files / Notes
 creds.json
+notes.txt
 
 # Virtual Environment
 venv
@@ -18,8 +21,9 @@ venv
 .vscode
 .ipynb_checkpoints/
 
-# Bytecode
+# Metadata / Binaries
 *.DS_Store
 __pycache__
 *.pyc
 *.zip
+__MACOSX

@@ -1,90 +1,156 @@
 #!/usr/bin/python3
 
-# Privacy Policy Project
-# HTML Text Parser
-# Takes in HTML file, splits all text from paragraphs (<p>), headers (<hX>),
-# lists (<ul> and <ol>), and links (<a>), and dumps each into separate files.
-# Does not preserve document structure, just splits component parts.
+"""
+Privacy Policy Project
+HTML Text Parser
+Takes in HTML file, splits all text from paragraphs (<p>), headers (<hX>),
+lists (<ul> and <ol>), and links (<a>), and dumps each into separate files.
+Does not preserve document structure, just splits component parts.
+"""
 
 from bs4 import BeautifulSoup, Comment, NavigableString, CData, Tag, ProcessingInstruction
-import sys, datetime, re, nltk
+import sys, os, datetime, re, nltk
 
 
-class Parser():
-	html_file = ""			# input html file
-	timestamp = ""			# time splitting started
-	outfile_paragraphs = ""	# outfile containing paragraphs
-	outfile_headers = ""	# outfile containing headers
-	outfile_lists = ""		# outfile containing bulleted/numbered lists
-	outfile_links = ""		# outfile containing every link in document, numbered
+class SimpleParser:
+    """ Strip readable/visible text from HTML document. """
 
-	invisible_tags = ["style", "script", "noscript", "head", "title", "meta", "[document]"]
-	skipped_tags = ["header", "footer", "nav"]
+    invisible_tags = ["style", "script", "noscript", "head", "title", "meta", "[document]"]
+    skipped_tags = ["header", "footer", "nav"]
 
-	pattern_header = re.compile("h\d")
-	pattern_list = re.compile("[u|o]l")
+    pattern_header = re.compile("h\d")
+    pattern_list = re.compile("[u|o]l")
 
-	def __init__(self, argv):
-		super(Parser, self).__init__()
+    def __init__(self, dataset_html, dataset_text, files):
+        """ Specify the files parsed and compare with text equivalents.
+        
+        Param:  dataset_html - string to path of the HTML dataset
+                dataset_text - string to path of the text dataset
+                files - actual list of files to parse
+        Return: n/a
+        """
+        super(SimpleParser, self).__init__()
 
-		try:
-			self.html_file = argv[1]
-		except Exception as e:
-			print("Usage: simple_parser.py <inputfile>")
-			sys.exit(2)
+        self.dataset_html = dataset_html
+        self.dataset_text = dataset_text
+        self.files = files
+    
+        self.timestamp = '_{0:%Y%m%d-%H%M%S}'.format(datetime.datetime.now())
 
-		with open(self.html_file, "r") as f:
-			contents = f.read()
-	
-		self.timestamp = '_{0:%Y%m%d-%H%M%S}'.format(datetime.datetime.now())
-		self.soup = BeautifulSoup(contents, 'html.parser')
-		self.outfile_paragraphs = self.html_file[:-5] + self.timestamp + '_paragraphs.txt'
-		self.outfile_headers = self.html_file[:-5] + self.timestamp + '_headers.txt'
-		self.outfile_lists = self.html_file[:-5] + self.timestamp + '_lists.txt'
-		self.outfile_links = self.html_file[:-5] + self.timestamp + '_links.txt'
+    def skip_tag(self, element):
+        """ Check if given tag is relevant to the parser.
+        https://stackoverflow.com/questions/1936466/beautifulsoup-grab-visible-webpage-text
+        
+        Param:  element - bs4 tag
+        Return: Boolean: True if tag is irrelevant, False if tag is relevant
+        """
+        if element.name in self.invisible_tags:
+            return True
+        if element.name in self.skipped_tags:
+            return True
+        if isinstance(element, Comment):
+            return True
+        return False
 
+    def walk_tree(self, soup):
+        """ DFS walk of bs4 html tree.  Only looks at specific tags, works on
+        theory that only these tags will contain important/visible text.
+        https://stackoverflow.com/questions/4814317/depth-first-traversal-on-beautifulsoup-parse-tree
+        
+        Param:  soup - bs4 instance of the html parser
+        Return: n/a
+        """
+        for element in soup.find_all(recursive=False):
+            name = getattr(element, "name", None)
 
-# https://stackoverflow.com/questions/1936466/beautifulsoup-grab-visible-webpage-text
-def skip_tag(element):
-	if element.name in parser.invisible_tags:
-		return True
-	if element.name in parser.skipped_tags:
-		return True
-	if isinstance(element, Comment):
-		return True
-	return False
+            if self.skip_tag(element):
+                print("skipping <" + name + "> tag" )
+                continue
 
+            if name == "p":
+                print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
+                with open(self.outfile_paragraphs, "a") as f:
+                    f.write(element.get_text() + "\n")
+            elif self.pattern_header.match(name):
+                print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
+                with open(self.outfile_headers, "a") as f:
+                    f.write(element.get_text() + "\n")
+            elif self.pattern_list.match(name):
+                print("PUT LIST IN DUMP FILE " + self.outfile_lists)
+                with open(self.outfile_lists, "a") as f:
+                    f.write(element.get_text()) 
+            elif name == "a":
+                print("PUT LINK IN DUMP FILE " + self.outfile_links)
+                with open(self.outfile_links, "a") as f:
+                    f.write(element.get_text() + "\n")
 
-# https://stackoverflow.com/questions/4814317/depth-first-traversal-on-beautifulsoup-parse-tree
-# does DFS on bs4 tree searching for text to process
-def walk_tree(soup):
-	for element in soup.find_all(recursive=False):
-		name = getattr(element, "name", None)
+            self.walk_tree(element)
 
-		if skip_tag(element):
-			print("skipping <" + name + "> tag" )
-			continue
+    def remove_text(self, txt_contents, fname):
+        """ Remove text from txt_contents based on lines from specific
+        output file.
+        
+        Param:  txt_contents - string representation of stripped text
+                fname - filename the stripped text comes from
+        Return: txt_contents - updated string representation of 
+                               stripped text
+        """
+        with open(fname, "r") as fp:
+            line = fp.readline()
+            while line:
+                line = fp.readline()
+                txt_contents = txt_contents.replace(line.strip(), "")
+        return txt_contents
 
-		if name == "p":
-			print("PUT PARAGRAPH IN DUMP FILE " + parser.outfile_paragraphs)
-			with open(parser.outfile_paragraphs, "a") as f:
-				f.write(element.get_text() + "\n")
-		elif parser.pattern_header.match(name):
-			print("PUT HEADER IN DUMP FILE " + parser.outfile_headers)
-			with open(parser.outfile_headers, "a") as f:
-				f.write(element.get_text() + "\n")
-		elif parser.pattern_list.match(name):
-			print("PUT LIST IN DUMP FILE " + parser.outfile_lists)
-			with open(parser.outfile_lists, "a") as f:
-				f.write(element.get_text()) 
-		elif name == "a":
-			print("PUT LINK IN DUMP FILE " + parser.outfile_links)
-			with open(parser.outfile_links, "a") as f:
-				f.write(element.get_text() + "\n")
+    def compare_parsed_text(self, txt_contents, fname):
+        """ Search contents of stripped text for each line from each
+        file of the output, then write the remainder to last output
+        file.  Enables human to check effectiveness of simple parser.
 
-		walk_tree(element)
+        Param:  txt_contents - string representation of stripped text
+                fname - filename the stripped text comes from
+        Return: n/a
+        """
+        txt_contents = self.remove_text(txt_contents, self.outfile_paragraphs)
+        txt_contents = self.remove_text(txt_contents, self.outfile_headers)
+        txt_contents = self.remove_text(txt_contents, self.outfile_lists)
+
+        with open(self.outfile_compare, "a") as f:
+            f.write(txt_contents)
+
+    def run(self):
+        """ Run the SimpleParser.
+
+        Param:  n/a
+        Return: n/a
+        """
+        for fname in self.files:
+            with open(self.dataset_html + fname + ".html", "r") as fp:
+                html_contents = fp.read()
+
+            soup = BeautifulSoup(html_contents, 'html.parser')
+        
+            self.outfile_paragraphs = fname + self.timestamp + '_paragraphs.txt'
+            self.outfile_headers = fname + self.timestamp + '_headers.txt'
+            self.outfile_lists = fname + self.timestamp + '_lists.txt'
+            self.outfile_links = fname + self.timestamp + '_links.txt'
+            self.outfile_compare = fname + self.timestamp + '_compare.txt'
+
+            self.walk_tree(soup)
+
+            with open(self.dataset_text + fname + ".txt", "r") as fp:
+                txt_contents = fp.read()
+
+            self.compare_parsed_text(txt_contents, fname)
 
 
 if __name__ == '__main__':
-	parser = Parser(sys.argv)
-	walk_tree(parser.soup)
+    dataset_html = "../../data/policies/html/"
+    dataset_text = "../../data/policies/text/"
+    # files = ["google_1", "google_2", "ebay_1", "amazon_1",
+    #          "facebook_1", "facebook_2", "netflix_1",
+    #          "netflix_2", "twitter_1", "wikipedia_1", "yahoo_1",
+    #          "yahoo_2"]
+    files = ["google_1"]
+    parser = SimpleParser(dataset_html, dataset_text, files)
+    parser.run()

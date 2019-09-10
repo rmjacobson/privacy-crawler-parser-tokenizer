@@ -1,6 +1,6 @@
 # Dataset
-data/policies/html
-data/policies/text
+data/policies/html*
+data/policies/text*
 data/policies/privacy_policies_html
 data/policies/privacy_policies_text
 

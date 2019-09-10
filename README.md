@@ -1,4 +1,4 @@
-# CMU RELAB: Pipeline for automated privacy policy annotations
+# CMU RELAB: Automated privacy policy annotations
 
 # Virtual Environments
 To set up your virtual environment, refer to

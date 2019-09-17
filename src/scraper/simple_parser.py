@@ -2,7 +2,7 @@
 
 """
 Privacy Policy Project
-HTML Text Parser
+Simple HTML Parser
 Takes in HTML file, splits all text from paragraphs (<p>), headers (<hX>),
 lists (<ul> and <ol>), and links (<a>), and dumps each into separate files.
 Does not preserve document structure, just splits component parts.
@@ -50,6 +50,8 @@ class SimpleParser:
             return True
         if isinstance(element, Comment):
             return True
+        if isinstance(element, NavigableString):
+            return True
         return False
 
     def walk_tree(self, soup):
@@ -65,24 +67,41 @@ class SimpleParser:
 
             if self.skip_tag(element):
                 print("skipping <" + name + "> tag" )
+                # with open(self.outfile_ignored, "a") as f:
+                #     f.write(element.get_text() + "\n")
                 continue
+
+            text = ""
 
             if name == "p":
                 print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
+                text = element.get_text() + "\n"
                 with open(self.outfile_paragraphs, "a") as f:
                     f.write(element.get_text() + "\n")
             elif self.pattern_header.match(name):
                 print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
+                text = element.get_text() + "\n"
                 with open(self.outfile_headers, "a") as f:
                     f.write(element.get_text() + "\n")
             elif self.pattern_list.match(name):
                 print("PUT LIST IN DUMP FILE " + self.outfile_lists)
+                for descendant in element.children:
+                    if self.skip_tag(descendant):
+                        continue
+                    with open(self.outfile_lists, "a") as f:
+                        f.write(descendant.get_text() + "\n")
+                    text = text + descendant.get_text() + "\n"
                 with open(self.outfile_lists, "a") as f:
-                    f.write(element.get_text()) 
-            elif name == "a":
-                print("PUT LINK IN DUMP FILE " + self.outfile_links)
-                with open(self.outfile_links, "a") as f:
-                    f.write(element.get_text() + "\n")
+                    f.write("\n")
+                text = text + "\n"
+
+            # elif name == "a":
+            #     print("PUT LINK IN DUMP FILE " + self.outfile_links)
+            #     with open(self.outfile_links, "a") as f:
+            #         f.write(element.get_text() + "\n")
+
+            with open(self.outfile_sequential, "a") as f:
+                f.write(text)
 
             self.walk_tree(element)
 
@@ -98,8 +117,8 @@ class SimpleParser:
         with open(fname, "r") as fp:
             line = fp.readline()
             while line:
+                txt_contents = txt_contents.replace(line.strip(), "", 1)
                 line = fp.readline()
-                txt_contents = txt_contents.replace(line.strip(), "")
         return txt_contents
 
     def compare_parsed_text(self, txt_contents, fname):
@@ -111,9 +130,11 @@ class SimpleParser:
                 fname - filename the stripped text comes from
         Return: n/a
         """
-        txt_contents = self.remove_text(txt_contents, self.outfile_paragraphs)
-        txt_contents = self.remove_text(txt_contents, self.outfile_headers)
-        txt_contents = self.remove_text(txt_contents, self.outfile_lists)
+        txt_contents = self.remove_text(txt_contents, self.outfile_sequential)
+        # txt_contents = self.remove_text(txt_contents, self.outfile_ignored)
+        # txt_contents = self.remove_text(txt_contents, self.outfile_lists)
+        # txt_contents = self.remove_text(txt_contents, self.outfile_paragraphs)
+        # txt_contents = self.remove_text(txt_contents, self.outfile_headers)
 
         with open(self.outfile_compare, "a") as f:
             f.write(txt_contents)
@@ -130,6 +151,8 @@ class SimpleParser:
 
             soup = BeautifulSoup(html_contents, 'html.parser')
         
+            self.outfile_sequential = fname + self.timestamp + '_sequential.txt'
+            self.outfile_ignored = fname + self.timestamp + '_ignored.txt'
             self.outfile_paragraphs = fname + self.timestamp + '_paragraphs.txt'
             self.outfile_headers = fname + self.timestamp + '_headers.txt'
             self.outfile_lists = fname + self.timestamp + '_lists.txt'
@@ -146,11 +169,11 @@ class SimpleParser:
 
 if __name__ == '__main__':
     dataset_html = "../../data/policies/html/"
-    dataset_text = "../../data/policies/text/"
+    dataset_text = "../../data/policies/text_redo/"
     # files = ["google_1", "google_2", "ebay_1", "amazon_1",
     #          "facebook_1", "facebook_2", "netflix_1",
     #          "netflix_2", "twitter_1", "wikipedia_1", "yahoo_1",
     #          "yahoo_2"]
-    files = ["google_1"]
+    files = ["ebay_1"]
     parser = SimpleParser(dataset_html, dataset_text, files)
     parser.run()

@@ -15,5 +15,5 @@ $ pip install -r requirements.txt
 If you've downloaded any additional libraries, log those libraries to your
 requirements.txt file by running the following:
 ```
-$ pip freeze > requirements.txt
+$ pip freeze -l > requirements.txt
 ```

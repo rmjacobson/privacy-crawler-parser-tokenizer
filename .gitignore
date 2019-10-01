@@ -4,6 +4,9 @@ data/policies/text*
 data/policies/privacy_policies_html
 data/policies/privacy_policies_text
 
+# Output of parser
+src/scraper/output/
+
 # Archive
 archive
 

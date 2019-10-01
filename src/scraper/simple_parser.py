@@ -68,29 +68,29 @@ class SimpleParser:
             if self.skip_tag(element):
                 print("skipping <" + name + "> tag" )
                 # with open(self.outfile_ignored, "a") as f:
-                #     f.write(element.get_text() + "\n")
+                #     f.write(element.get_text(strip=True) + "\n")
                 continue
 
             text = ""
 
             if name == "p":
                 print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
-                text = element.get_text() + "\n"
+                text = element.get_text(strip=True) + "\n"
                 with open(self.outfile_paragraphs, "a") as f:
-                    f.write(element.get_text() + "\n")
+                    f.write(element.get_text(strip=True) + "\n")
             elif self.pattern_header.match(name):
                 print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
-                text = element.get_text() + "\n"
+                text = element.get_text(strip=True) + "\n"
                 with open(self.outfile_headers, "a") as f:
-                    f.write(element.get_text() + "\n")
+                    f.write(element.get_text(strip=True) + "\n")
             elif self.pattern_list.match(name):
                 print("PUT LIST IN DUMP FILE " + self.outfile_lists)
                 for descendant in element.children:
                     if self.skip_tag(descendant):
                         continue
                     with open(self.outfile_lists, "a") as f:
-                        f.write(descendant.get_text() + "\n")
-                    text = text + descendant.get_text() + "\n"
+                        f.write(descendant.get_text(strip=True) + "\n")
+                    text = text + descendant.get_text(strip=True) + "\n"
                 with open(self.outfile_lists, "a") as f:
                     f.write("\n")
                 text = text + "\n"
@@ -98,7 +98,7 @@ class SimpleParser:
             # elif name == "a":
             #     print("PUT LINK IN DUMP FILE " + self.outfile_links)
             #     with open(self.outfile_links, "a") as f:
-            #         f.write(element.get_text() + "\n")
+            #         f.write(element.get_text(strip=True) + "\n")
 
             with open(self.outfile_sequential, "a") as f:
                 f.write(text)
@@ -151,13 +151,13 @@ class SimpleParser:
 
             soup = BeautifulSoup(html_contents, 'html.parser')
         
-            self.outfile_sequential = fname + self.timestamp + '_sequential.txt'
-            self.outfile_ignored = fname + self.timestamp + '_ignored.txt'
-            self.outfile_paragraphs = fname + self.timestamp + '_paragraphs.txt'
-            self.outfile_headers = fname + self.timestamp + '_headers.txt'
-            self.outfile_lists = fname + self.timestamp + '_lists.txt'
-            self.outfile_links = fname + self.timestamp + '_links.txt'
-            self.outfile_compare = fname + self.timestamp + '_compare.txt'
+            self.outfile_sequential = output_folder + fname + self.timestamp + '_sequential.txt'
+            self.outfile_ignored = output_folder + fname + self.timestamp + '_ignored.txt'
+            self.outfile_paragraphs = output_folder + fname + self.timestamp + '_paragraphs.txt'
+            self.outfile_headers = output_folder + fname + self.timestamp + '_headers.txt'
+            self.outfile_lists = output_folder + fname + self.timestamp + '_lists.txt'
+            self.outfile_links = output_folder + fname + self.timestamp + '_links.txt'
+            self.outfile_compare = output_folder + fname + self.timestamp + '_compare.txt'
 
             self.walk_tree(soup)
 
@@ -169,11 +169,16 @@ class SimpleParser:
 
 if __name__ == '__main__':
     dataset_html = "../../data/policies/html/"
-    dataset_text = "../../data/policies/text_redo/"
+    dataset_text = "../../data/policies/text_test/"
+    output_folder = "output/"
     # files = ["google_1", "google_2", "ebay_1", "amazon_1",
     #          "facebook_1", "facebook_2", "netflix_1",
     #          "netflix_2", "twitter_1", "wikipedia_1", "yahoo_1",
     #          "yahoo_2"]
-    files = ["ebay_1"]
+    files = ["google_1","ebay_1","amazon_1",
+             "facebook_1", "netflix_1", "twitter_1",
+             "wikipedia_1", "yahoo_1", "redbubble_1",
+             "blizzard_1", "instagram_1", "stackoverflow_1",
+             "steelers_1", "studentuniverse_1"]
     parser = SimpleParser(dataset_html, dataset_text, files)
     parser.run()

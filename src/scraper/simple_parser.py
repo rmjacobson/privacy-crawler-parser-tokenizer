@@ -10,6 +10,7 @@ Does not preserve document structure, just splits component parts.
 
 from bs4 import BeautifulSoup, Comment, NavigableString, CData, Tag, ProcessingInstruction
 import sys, os, datetime, re, nltk
+from nltk.tokenize import sent_tokenize
 
 
 class SimpleParser:
@@ -66,7 +67,7 @@ class SimpleParser:
             name = getattr(element, "name", None)
 
             if self.skip_tag(element):
-                print("skipping <" + name + "> tag" )
+                # print("skipping <" + name + "> tag" )
                 # with open(self.outfile_ignored, "a") as f:
                 #     f.write(element.get_text(strip=True) + "\n")
                 continue
@@ -74,17 +75,17 @@ class SimpleParser:
             text = ""
 
             if name == "p":
-                print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
+                # print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
                 text = element.get_text(strip=True) + "\n"
                 with open(self.outfile_paragraphs, "a") as f:
                     f.write(element.get_text(strip=True) + "\n")
             elif self.pattern_header.match(name):
-                print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
+                # print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
                 text = element.get_text(strip=True) + "\n"
                 with open(self.outfile_headers, "a") as f:
                     f.write(element.get_text(strip=True) + "\n")
             elif self.pattern_list.match(name):
-                print("PUT LIST IN DUMP FILE " + self.outfile_lists)
+                # print("PUT LIST IN DUMP FILE " + self.outfile_lists)
                 for descendant in element.children:
                     if self.skip_tag(descendant):
                         continue
@@ -96,7 +97,7 @@ class SimpleParser:
                 text = text + "\n"
 
             # elif name == "a":
-            #     print("PUT LINK IN DUMP FILE " + self.outfile_links)
+                # print("PUT LINK IN DUMP FILE " + self.outfile_links)
             #     with open(self.outfile_links, "a") as f:
             #         f.write(element.get_text(strip=True) + "\n")
 
@@ -136,8 +137,11 @@ class SimpleParser:
         # txt_contents = self.remove_text(txt_contents, self.outfile_paragraphs)
         # txt_contents = self.remove_text(txt_contents, self.outfile_headers)
 
+        remaining_sentences = sent_tokenize(txt_contents)
         with open(self.outfile_compare, "a") as f:
-            f.write(txt_contents)
+            f.write(str(remaining_sentences))
+        return remaining_sentences
+
 
     def run(self):
         """ Run the SimpleParser.
@@ -164,7 +168,8 @@ class SimpleParser:
             with open(self.dataset_text + fname + ".txt", "r") as fp:
                 txt_contents = fp.read()
 
-            self.compare_parsed_text(txt_contents, fname)
+            remaining_sentences = self.compare_parsed_text(txt_contents, fname)
+            print(fname + " has " + str(len(remaining_sentences)) + " left.")
 
 
 if __name__ == '__main__':

@@ -38,11 +38,11 @@ class StripThread(threading.Thread):
                 script.decompose()
 
             # use the below line if you want the text exactly as in browser
-            # txt = soup.get_text()
+            txt = soup.get_text()
             # use the below line if you want the text to be space-separated
             # txt = soup.get_text(" ", strip=True)
             # use the below line to force the text to be completely stripped
-            txt = soup.get_text("", strip=True)
+            # txt = soup.get_text("", strip=True)
 
             # remove leading/trailing whitespace on each line
             txt = "".join((t.strip() for t in txt.split("\n")))
@@ -89,7 +89,7 @@ class Scraper:
 
 if __name__ == "__main__":
     html_dir = "../../data/policies/html/"
-    text_dir = "../../data/policies/text_test/"
+    text_dir = "../../data/policies/text_redo/"
 
     # num_chunks specifies how many threads are used to process the html
     # set to 1 if want to process sequentially in single thread

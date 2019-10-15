@@ -11,7 +11,6 @@ Does not preserve document structure, just splits component parts.
 from bs4 import BeautifulSoup, Comment, NavigableString, CData, Tag, ProcessingInstruction
 import sys, os, datetime, re, nltk
 from nltk.tokenize import sent_tokenize
-# import detectEnglish
 
 
 class SimpleParser:
@@ -22,9 +21,6 @@ class SimpleParser:
 
     pattern_header = re.compile("h\d")
     pattern_list = re.compile("[u|o]l")
-
-    UPPERLETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    LETTERS_AND_SPACE = UPPERLETTERS + UPPERLETTERS.lower() + ' \t\n'
 
     filler_sentences = "This is a sentence. This is a sentence. This is a sentence. This is a sentence. This is a sentence. This is a sentence."
 
@@ -44,45 +40,6 @@ class SimpleParser:
         self.timestamp = '_{0:%Y%m%d-%H%M%S}'.format(datetime.datetime.now())
         self.failed = 0
 
-        self.ENGLISH_WORDS = self.loadDictionary()
-
-    def loadDictionary(self):
-        dictionaryFile = open('dictionary.txt')
-        englishWords = {}
-        for word in dictionaryFile.read().split('\n'):
-            englishWords[word] = None
-            dictionaryFile.close()
-        return englishWords
-
-    def getEnglishCount(self, message):
-        message = message.upper()
-        message = self.removeNonLetters(message)
-        possibleWords = message.split()
-        if possibleWords == []:
-            return 0.0 # no words at all, so return 0.0
-        matches = 0
-        for word in possibleWords:
-            if word in self.ENGLISH_WORDS:
-                matches += 1
-        return float(matches) / len(possibleWords)
-
-    def removeNonLetters(self, message):
-        lettersOnly = []
-        for symbol in message:
-            if symbol in self.LETTERS_AND_SPACE:
-                lettersOnly.append(symbol)
-        return ''.join(lettersOnly)
-
-    def isEnglish(self, message, wordPercentage=20, letterPercentage=85):
-        # By default, 20% of the words must exist in the dictionary file, and
-        # 85% of all the characters in the message must be letters or spaces
-        # (not punctuation or numbers).
-        wordsMatch = self.getEnglishCount(message) * 100 >= wordPercentage
-        numLetters = len(self.removeNonLetters(message))
-        messageLettersPercentage = float(numLetters) / len(message) * 100
-        lettersMatch = messageLettersPercentage >= letterPercentage
-        return wordsMatch and lettersMatch
-
     def skip_tag(self, element):
         """ Check if given tag is relevant to the parser.
         https://stackoverflow.com/questions/1936466/beautifulsoup-grab-visible-webpage-text
@@ -100,17 +57,6 @@ class SimpleParser:
             return True
         return False
 
-    def get_grandchildren(self, element):
-        ret = []
-        children = element.findChildren(recursive=False)
-        for child in children:
-            grandchildren = child.findChildren(recursive=False)
-            for grandchild in grandchildren:
-                ret.append(grandchild)
-        # if len(ret) == 0:
-        #     print("no grandchildren: ")
-        return ret
-
     def is_only_links(self, element):
         ret = True
         children = element.findChildren(recursive=False)
@@ -120,73 +66,6 @@ class SimpleParser:
                 ret = False
         return ret
 
-    def process_known_tags(self, element):
-        name = getattr(element, "name", None)
-
-        if name == "p":
-            # print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
-            text = element.get_text() + "\n"
-            with open(self.outfile_paragraphs, "a") as f:
-                f.write(element.get_text() + "\n")
-            # with open(self.outfile_sequential, "a") as f:
-            #     f.write(text)
-        elif self.pattern_header.match(name):
-            # print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
-            text = element.get_text() + "\n"
-            with open(self.outfile_headers, "a") as f:
-                f.write(element.get_text() + "\n")
-            # with open(self.outfile_sequential, "a") as f:
-            #     f.write(text)
-        elif self.pattern_list.match(name):
-            # print("PUT LIST IN DUMP FILE " + self.outfile_lists)
-            for descendant in element.children:
-                if self.skip_tag(descendant) or self.is_only_links(descendant):
-                    continue
-                with open(self.outfile_lists, "a") as f:
-                    f.write(descendant.get_text() + "\n")
-                text = text + descendant.get_text() + "\n"
-            with open(self.outfile_lists, "a") as f:
-                f.write("\n")
-            # text = text + "\n"
-            # with open(self.outfile_sequential, "a") as f:
-            #     f.write(text)
-
-
-    def process_div(self, element):
-        """ Divs are like mini self-contained html pages, except that
-        text is obnoxiously not required to be under a separate tag.
-        This will processor works by trying to find and extract or
-        replace *all* tags that aren't solely sentence-itemizable text
-        (like paragraphs) and then grabbing the entire remainder of the
-        div as a single paragraph-like chunk.
-
-        Param: element - bs4 node element.
-        Return: n/a - all output added to output files.
-        """
-        children = element.findChildren(recursive=False)
-        element_string = str(element)
-        element_string_orig = str(element)
-        for child in children:
-            child_string = str(child)
-            name = getattr(child, "name", None)
-            if name == "div":
-                # print("Found div.  old string = " + element_string)
-                element_string = element_string.replace(child_string, self.process_div(child), 1)
-                # print("New string = " + element_string)
-                continue
-            # self.process_known_tags(child, True)
-            if name == "p" or name == "a":
-                # print("Found tag <" + name + "> replacing \'" + child_string + "\' with \'" + child.get_text() + "\'")
-                element_string = element_string.replace(child_string, child.get_text(), 1)
-            if self.pattern_header.match(name) or self.pattern_list.match(name):
-                # print("found header --> deleting")
-                element_string = element_string.replace(child_string, "", 1)
-            # print("div contents: " + element_string + "\n")
-            self.process_known_tags(child)
-
-        return element_string
-
-
     def walk_tree(self, soup):
         """ DFS walk of bs4 html tree.  Only looks at specific tags, works on
         theory that only these tags will contain important/visible text.
@@ -195,35 +74,75 @@ class SimpleParser:
         Param:  soup - bs4 instance of the html parser
         Return: n/a
         """
+        # for element in soup.find_all(recursive=False):
+        #     if self.skip_tag(element):
+        #         # print("skipping <" + name + "> tag" )
+        #         # with open(self.outfile_ignored, "a") as f:
+        #         #     f.write(element.get_text(strip=True) + "\n")
+        #         continue
+
+        #     name = getattr(element, "name", None)
+        #     text = ""
+
+        #     if name == "p":
+        #         # print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
+        #         text = element.get_text() + "\n"
+        #         with open(self.outfile_paragraphs, "a") as f:
+        #             f.write(element.get_text() + "\n")
+        #         with open(self.outfile_sequential, "a") as f:
+        #             f.write(text)
+        #     elif self.pattern_header.match(name):
+        #         # print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
+        #         text = element.get_text() + "\n"
+        #         with open(self.outfile_headers, "a") as f:
+        #             f.write(element.get_text() + "\n")
+        #         with open(self.outfile_sequential, "a") as f:
+        #             f.write(text)
+        #     elif self.pattern_list.match(name):
+        #         # print("PUT LIST IN DUMP FILE " + self.outfile_lists)
+        #         for descendant in element.children:
+        #             if self.skip_tag(descendant) or self.is_only_links(descendant):
+        #                 continue
+        #             with open(self.outfile_lists, "a") as f:
+        #                 f.write(descendant.get_text() + "\n")
+        #             text = text + descendant.get_text() + "\n"
+        #         with open(self.outfile_lists, "a") as f:
+        #             f.write("\n")
+        #         text = text + "\n"
+        #         with open(self.outfile_sequential, "a") as f:
+        #             f.write(text)
+            
+        #     self.walk_tree(element)
+
         for element in soup.find_all(recursive=False):
+            name = getattr(element, "name", None)
+
             if self.skip_tag(element):
                 # print("skipping <" + name + "> tag" )
                 # with open(self.outfile_ignored, "a") as f:
                 #     f.write(element.get_text(strip=True) + "\n")
                 continue
 
-            name = getattr(element, "name", None)
             text = ""
-            from_div = False
 
             if name == "p":
                 # print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
                 text = element.get_text() + "\n"
                 with open(self.outfile_paragraphs, "a") as f:
                     f.write(element.get_text() + "\n")
-                # with open(self.outfile_sequential, "a") as f:
-                #     f.write(text)
+                with open(self.outfile_sequential, "a") as f:
+                    f.write(text)
             elif self.pattern_header.match(name):
                 # print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
                 text = element.get_text() + "\n"
                 with open(self.outfile_headers, "a") as f:
                     f.write(element.get_text() + "\n")
-                # with open(self.outfile_sequential, "a") as f:
-                #     f.write(text)
+                with open(self.outfile_sequential, "a") as f:
+                    f.write(text)
             elif self.pattern_list.match(name):
                 # print("PUT LIST IN DUMP FILE " + self.outfile_lists)
                 for descendant in element.children:
-                    if self.skip_tag(descendant) or self.is_only_links(descendant):
+                    if self.skip_tag(descendant):
                         continue
                     with open(self.outfile_lists, "a") as f:
                         f.write(descendant.get_text() + "\n")
@@ -231,49 +150,9 @@ class SimpleParser:
                 with open(self.outfile_lists, "a") as f:
                     f.write("\n")
                 text = text + "\n"
-                # with open(self.outfile_sequential, "a") as f:
-                #     f.write(text)
-            elif name == "div":
-                grandchildren = self.get_grandchildren(element)
-                if len(grandchildren) == 0:
-                    text = self.process_div(element)
-                    from_div = True
-                    div_soup = BeautifulSoup(text, 'html.parser')
-                    text = div_soup.get_text()
-                    with open(self.outfile_sequential, "a") as f:
-                        f.write(text + "\n")
-                    continue
-
-
-            if from_div == False:
                 with open(self.outfile_sequential, "a") as f:
                     f.write(text)
-
-
-
-            # elif name == "div":
-            #     grandchildren = self.get_grandchildren(element)
-            #     if len(grandchildren) == 0:
-            #         text = element.get_text(strip=True) + "\n"
-            #         if self.isEnglish(text) and not self.is_only_links(element):
-            #             with open(self.outfile_sequential, "a") as f:
-            #                 f.write(text)
-            #             continue
-                    # else:
-                    #     print(text)
-                # elif "Facebookpixel" in element.get_text(strip=True):
-                #     print(len(grandchildren))
-                #     for grandchild in grandchildren:
-                #         gname = getattr(grandchild, "name", None)
-                #         print(gname)
-                #     print(element.get('class'))
-                #     print(element.get_text(strip=True) + "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
-                    
-                # if div has grandchildren, continue
-                # do isEnglish() on those divs and add to sequential.txt if so
-                    # may need to increase sensitivity of isEnglish
-                # not sure whether or not we need to remove the div after this to 
-                    # avoid repeating text
+                continue
 
             # elif name == "a":
                 # print("PUT LINK IN DUMP FILE " + self.outfile_links)
@@ -283,7 +162,6 @@ class SimpleParser:
             # with open(self.outfile_sequential, "a") as f:
             #     f.write(text)
 
-            # self.process_known_tags(element, False)
             self.walk_tree(element)
 
     def remove_text(self, txt_contents, fname):
@@ -318,9 +196,9 @@ class SimpleParser:
         """
         txt_contents = self.remove_text(txt_contents, self.outfile_sequential)
         # txt_contents = self.remove_text(txt_contents, self.outfile_ignored)
-        txt_contents = self.remove_text(txt_contents, self.outfile_lists)
+        # txt_contents = self.remove_text(txt_contents, self.outfile_lists)
         # txt_contents = self.remove_text(txt_contents, self.outfile_paragraphs)
-        txt_contents = self.remove_text(txt_contents, self.outfile_headers)
+        # txt_contents = self.remove_text(txt_contents, self.outfile_headers)
 
         remaining_sentences = sent_tokenize(txt_contents)
         for sentence in remaining_sentences:
@@ -355,10 +233,10 @@ class SimpleParser:
             soup = BeautifulSoup(html_contents, 'html.parser')
 
             # remove all unwanted/non-visible text elements
-            rm_elements = ['script', 'noscript', 'meta', 'style', 'link', 'img',
-                       'iframe', 'header', 'head', 'footer', 'nav']
-            for element in soup(rm_elements):
-                element.decompose()
+            # rm_elements = ['script', 'noscript', 'meta', 'style', 'link', 'img',
+            #            'iframe', 'header', 'head', 'footer', 'nav']
+            # for element in soup(rm_elements):
+            #     element.decompose()
         
             self.outfile_sequential = output_folder + fname + self.timestamp + '_sequential.txt'
             self.outfile_ignored = output_folder + fname + self.timestamp + '_ignored.txt'

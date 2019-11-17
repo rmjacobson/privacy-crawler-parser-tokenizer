@@ -74,46 +74,6 @@ class SimpleParser:
         Param:  soup - bs4 instance of the html parser
         Return: n/a
         """
-        # for element in soup.find_all(recursive=False):
-        #     if self.skip_tag(element):
-        #         # print("skipping <" + name + "> tag" )
-        #         # with open(self.outfile_ignored, "a") as f:
-        #         #     f.write(element.get_text(strip=True) + "\n")
-        #         continue
-
-        #     name = getattr(element, "name", None)
-        #     text = ""
-
-        #     if name == "p":
-        #         # print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
-        #         text = element.get_text() + "\n"
-        #         with open(self.outfile_paragraphs, "a") as f:
-        #             f.write(element.get_text() + "\n")
-        #         with open(self.outfile_sequential, "a") as f:
-        #             f.write(text)
-        #     elif self.pattern_header.match(name):
-        #         # print("PUT HEADER IN DUMP FILE " + self.outfile_headers)
-        #         text = element.get_text() + "\n"
-        #         with open(self.outfile_headers, "a") as f:
-        #             f.write(element.get_text() + "\n")
-        #         with open(self.outfile_sequential, "a") as f:
-        #             f.write(text)
-        #     elif self.pattern_list.match(name):
-        #         # print("PUT LIST IN DUMP FILE " + self.outfile_lists)
-        #         for descendant in element.children:
-        #             if self.skip_tag(descendant) or self.is_only_links(descendant):
-        #                 continue
-        #             with open(self.outfile_lists, "a") as f:
-        #                 f.write(descendant.get_text() + "\n")
-        #             text = text + descendant.get_text() + "\n"
-        #         with open(self.outfile_lists, "a") as f:
-        #             f.write("\n")
-        #         text = text + "\n"
-        #         with open(self.outfile_sequential, "a") as f:
-        #             f.write(text)
-            
-        #     self.walk_tree(element)
-
         for element in soup.find_all(recursive=False):
             name = getattr(element, "name", None)
 
@@ -158,9 +118,6 @@ class SimpleParser:
                 # print("PUT LINK IN DUMP FILE " + self.outfile_links)
             #     with open(self.outfile_links, "a") as f:
             #         f.write(element.get_text(strip=True) + "\n")
-
-            # with open(self.outfile_sequential, "a") as f:
-            #     f.write(text)
 
             self.walk_tree(element)
 

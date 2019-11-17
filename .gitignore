@@ -6,6 +6,11 @@ data/policies/privacy_policies_text
 
 # Output of parser
 src/scraper/output/
+src/scraper/output.txt
+
+# Input for verification of policies
+src/verification/policies_ground_truth/*
+src/verification/policies_test/*
 
 # Archive
 archive

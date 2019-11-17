@@ -8,9 +8,15 @@ data/policies/privacy_policies_text
 src/scraper/output/
 src/scraper/output.txt
 
+# div testing files
+src/scraper/divtest/
+
 # Input for verification of policies
 src/verification/policies_ground_truth/*
 src/verification/policies_test/*
+
+# Output of statistics scripts
+#src/statistics/out*
 
 # Archive
 archive

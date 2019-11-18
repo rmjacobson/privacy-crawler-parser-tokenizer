@@ -1,4 +1,13 @@
+#!/usr/bin/python3
 
+"""
+Privacy Policy Project
+verify.py
+Checks every file in list of given webpages (in form of scraped 
+text files) is actually a privacy policy.  Checks wether the text
+is majority english, does cosine similarity from ground truth.
+
+"""
 
 
 def verify():

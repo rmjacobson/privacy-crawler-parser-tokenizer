@@ -31,8 +31,8 @@ input_folder = '/Users/Ryan/Desktop/privacy_proj/Deep-NER/src/scraper/output'
 
 # Create an S3 client with session keys
 session = boto3.Session(
-    aws_access_key_id='AKIA3TFRMTNNL3RMHMKA',
-    aws_secret_access_key='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',
+    # aws_access_key_id='',
+    # aws_secret_access_key='',
     region_name='us-east-1'
 )
 s3 = session.resource('s3')

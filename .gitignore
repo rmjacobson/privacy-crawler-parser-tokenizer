@@ -4,6 +4,9 @@ data/policies/text*
 data/policies/privacy_policies_html
 data/policies/privacy_policies_text
 
+# Amazon uploader
+src/scraper/amazon_upload.py
+
 # Output of parser
 src/scraper/output/
 src/scraper/output.txt
@@ -16,7 +19,7 @@ src/verification/policies_ground_truth/*
 src/verification/policies_test/*
 
 # Output of statistics scripts
-#src/statistics/out*
+src/statistics/*out*
 
 # Archive
 archive

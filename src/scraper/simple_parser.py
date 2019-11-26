@@ -87,7 +87,7 @@ class SimpleParser:
 
             if name == "p":
                 # print("PUT PARAGRAPH IN DUMP FILE " + self.outfile_paragraphs)
-                text = element.get_text() + "\n"
+                text = element.get_text().strip() + "\n"
                 with open(self.outfile_paragraphs, "a") as f:
                     f.write(element.get_text() + "\n")
                 with open(self.outfile_sequential, "a") as f:

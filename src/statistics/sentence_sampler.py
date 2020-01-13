@@ -59,14 +59,17 @@ class TextSampler:
         self.output_file_failed = output_folder + self.timestamp + '-failed.txt'
         self.num_samples = num_samples
         self.pattern_prefix_noise = re.compile("^(?:[a-zA-Z0-9]|[-](?=[^-]*$)){1,3}$\:*")
+        # self.pattern_prefix_noise = re.compile("^(?:[a-zA-Z0-9]|[-](?=[^-]*$)){1,3}$[\:\.]*")
         self.pattern_uppercase_first = re.compile("[A-Z]")
+        # self.pattern_personal_titles = re.compile("(?<!Mr|Mrs|Dr|Ms)\.")
+        self.pattern_sentence_end_punc = re.compile("[\.?!]$")
         self.num_file_tries = 0
         self.error_count = 0
         self.rule_vals = {
             "SHORT"     : 0,
             "LONG"      : 0,
             "START_CAP" : 0,
-            "END_PER"   : 0,
+            "END_PUNC"  : 0,
             "PRE_NOISE" : 0,
             "HEAD_FRAG" : 0,
             "GOOD"      : 0
@@ -118,23 +121,21 @@ class TextSampler:
             caps = [l for l in word if l.isupper()]
             if len(caps) > 0:
                 ncaps = ncaps + 1
-        if (ncaps / len(words)) > 0.5:
+        if (ncaps / len(words)) > 0.6:
             return True
         else:
             return False
 
-    def update_rule_count(self, key, file, sentence, writeout):
+    def update_rule_count(self, keylist, file, sentence, writeout):
         self.rule_vals[key] = self.rule_vals[key] + 1
         if writeout:
-            if key == "GOOD":
+            if key[0] == "GOOD":
                 with open(self.output_file, "a") as fp:
                     fp.write("[FILE: " + file + "]\n" + 
                              sentence + "\n\n") 
             else:
                 with open(self.output_file_failed, "a") as fp:
-                    fp.write("[FILE: " + file + "]\n" + 
-                             "[" + key + " -- DISCARDED]\n" + 
-                             sentence + "\n\n")
+                    fp.write("[FILE: " + file + "]\n")
 
     def generate_rule_hist_figs(self, rule_dict_list):
         fig = plt.figure(figsize=(20,10))
@@ -157,9 +158,9 @@ class TextSampler:
         start_fig.set_ylabel('Number of Policies in Sample')
         start_fig.hist(result, self.num_samples)
 
-        result = [d['END_PER'] for d in rule_dict_list]
+        result = [d['END_PUNC'] for d in rule_dict_list]
         end_fig = fig.add_subplot(324)
-        end_fig.set_xlabel('END_PER Rule Hits per Policy')
+        end_fig.set_xlabel('END_PUNC Rule Hits per Policy')
         end_fig.set_ylabel('Number of Policies in Sample')
         end_fig.hist(result, self.num_samples)
 
@@ -180,29 +181,50 @@ class TextSampler:
 
     def apply_rules(self, file, sentence, writeout):
         num_words = len(sentence.split())
+        # rule_hit = False
+        rule_hits = []
         if num_words < 5:
             # probably due to things like addresses or header fragments
-            self.update_rule_count("SHORT", file, sentence, writeout)
-        elif num_words > 85:
+            # self.update_rule_count("SHORT", file, sentence, writeout)
+            self.rule_vals["SHORT"] = self.rule_vals["SHORT"] + 1
+            rule_hits.append("SHORT")
+        if num_words > 85:
             # probably a run-on sentence that hasn't been properly parsed
-            self.update_rule_count("LONG", file, sentence, writeout)
-        elif not self.pattern_uppercase_first.match(sentence):
+            # self.update_rule_count("LONG", file, sentence, writeout)
+            self.rule_vals["LONG"] = self.rule_vals["LONG"] + 1
+            rule_hits.append("LONG")
+        if not self.pattern_uppercase_first.match(sentence):
             # probably due to improperly scraped fragment (like from a div)
             # might be able to go back to these and re-parse
-            self.update_rule_count("START_CAP", file, sentence, writeout)
-        elif not sentence.endswith('.'):
+            # self.update_rule_count("START_CAP", file, sentence, writeout)
+            self.rule_vals["START_CAP"] = self.rule_vals["START_CAP"] + 1
+            rule_hits.append("START_CAP")
+        if not self.pattern_sentence_end_punc.search(sentence):
             # usually the beginning of a list (and ends with ':')
-            self.update_rule_count("END_PER", file, sentence, writeout)
-        elif self.pattern_prefix_noise.match(sentence):
+            # self.update_rule_count("END_PUNC", file, sentence, writeout)
+            self.rule_vals["END_PUNC"] = self.rule_vals["END_PUNC"] + 1
+            rule_hits.append("END_PUNC")
+        if self.pattern_prefix_noise.match(sentence):
             # things like "1. " or "A: " that are more like headings in an outline
             # might be able to go back to these and re-parse
-            self.update_rule_count("PRE_NOISE", file, sentence, writeout)
-        elif self.is_header_fragment(sentence):
+            # self.update_rule_count("PRE_NOISE", file, sentence, writeout)
+            self.rule_vals["PRE_NOISE"] = self.rule_vals["PRE_NOISE"] + 1
+            rule_hits.append("PRE_NOISE")
+        if self.is_header_fragment(sentence):
             # > 50% words start with a capital letter, usually when things
             # that are usually in <hX> tags are part of <p> tags.
-            self.update_rule_count("HEAD_FRAG", file, sentence, writeout)
+            # self.update_rule_count("HEAD_FRAG", file, sentence, writeout)
+            self.rule_vals["HEAD_FRAG"] = self.rule_vals["HEAD_FRAG"] + 1
+            rule_hits.append("HEAD_FRAG")
+        
+        if len(rule_hits) == 0:
+            # self.update_rule_count("GOOD", file, sentence, writeout)
+            self.rule_vals["GOOD"] = self.rule_vals["GOOD"] + 1
+            with open(self.output_file, "a") as fp:
+                fp.write("[FILE: " + file + "]\n" + sentence + "\n\n")
         else:
-            self.update_rule_count("GOOD", file, sentence, writeout)
+            with open(self.output_file_failed, "a") as fp:
+                fp.write("[FILE: " + file + "]\n" + str(rule_hits) + "\n" + sentence + "\n\n")
 
 
     def get_rule_histograms(self, random_files):
@@ -235,7 +257,7 @@ class TextSampler:
         rule_percentages = [value * 100. / self.num_samples for value in self.rule_vals.values()]
         percentages_fig = fig.add_subplot(121)
         percentages_fig.set_title('%Rule Hits in ' + str(self.num_samples - self.error_count) + ' Samples')
-        percentages_fig.bar(list(self.rule_vals.keys()), rule_percentages, color='b')
+        percentages_fig.bar(list(self.rule_vals.keys()), self.rule_vals.values(), color='b')
 
         word_len_fig = fig.add_subplot(122)
         word_len_fig.set_xlabel('Words per sentence')
@@ -252,12 +274,12 @@ class TextSampler:
         random_files = random.sample(paragraph_files, self.num_samples)
         print("Sampling " +  str(self.num_samples) + " times from " + str(len(paragraph_files)) + "files.")
 
-        self.error_count = 0
-        self.get_rule_histograms(random_files)
-
         # self.error_count = 0
-        # self.rule_vals.update({rule:0 for rule in self.rule_vals})
-        # self.get_general_sample(random_files)
+        # self.get_rule_histograms(random_files)
+
+        self.error_count = 0
+        self.rule_vals.update({rule:0 for rule in self.rule_vals})
+        self.get_general_sample(random_files)
 
 
 if __name__ == '__main__':

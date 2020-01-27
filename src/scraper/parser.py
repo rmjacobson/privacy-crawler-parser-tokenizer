@@ -11,6 +11,7 @@ Preserves document structure and traceability in sentence outputs.
 from bs4 import BeautifulSoup, Comment, NavigableString, CData, Tag, ProcessingInstruction
 import sys, os, datetime, re, nltk, csv
 from nltk.tokenize import sent_tokenize
+import matplotlib
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, Lock, Value, cpu_count, current_process
 
@@ -54,7 +55,9 @@ class SequentialElement:
 
 class ParserData:
     """
-    Class for data used during the parsing of a single
+    Class for data used during the parsing of a single policy.  This
+    data structure is initialized to be empty at start of every
+    parsing process.
     """
     def __init__(self):  
         self.seq_list = []
@@ -174,12 +177,12 @@ def walk_tree(soup, parser):
             # text = " ".join(text.split())
             parser.paragraph_list.append(len(parser.seq_list))
             parser.seq_list.append(SequentialElement(text, "p", paragraph_index))
-            paragraph_index = paragraph_index + 1
+            paragraph_index += 1
         elif pattern_header.match(element_name):
             text = element.get_text().strip() + "\n"
             parser.header_list.append(len(parser.seq_list))
             parser.seq_list.append(SequentialElement(text, "h", header_index))
-            header_index = header_index + 1
+            header_index += 1
         elif pattern_list.match(element_name):
             # If the last thing in the sequence ends in a colon, move it to be part 
             # of the list element rather than whatever it was previously because it is 
@@ -197,7 +200,7 @@ def walk_tree(soup, parser):
                 text = text + descendant.get_text().strip() + "\n"
             parser.list_list.append(len(parser.seq_list))
             parser.seq_list.append(SequentialElement(text, "l", list_index))
-            list_index = list_index + 1
+            list_index += 1
 
             # continue for lists because the entire list and its descendants have already
             # been parsed
@@ -232,29 +235,28 @@ def is_header_fragment(sentence):
     for word in words:
         caps = [l for l in word if l.isupper()]
         if len(caps) > 0:
-            ncaps = ncaps + 1
+            ncaps += 1
     if (ncaps / len(words)) > 0.6:
         return True
     else:
         return False
 
-def generate_rule_bar_figs(policy_sentence_stats):
+def generate_rule_bar_figs(rule_dict, fname):
     """
-    Creates bar graph of every successfully parsed policy's sentence
-    rule hits.  Note: has to be done AFTER all policies have been
-    parsed because of restrictions on GUI commands inside child
-    processes in MacOS Catilina.
+    Creates bar graphs of every successfully parsed policy's sentence
+    rule hits.  Note: has to be done AFTER all policies have been parsed
+    because of restrictions on GUI commands inside child processes.
     """
-    for i,policy in enumerate(policy_sentence_stats, start=1):
-        # save stats on rule hits to png file
-        outfile_rule_bar = output_folder + policy[1] + timestamp + '_rule_bar.png'
-        plt.bar(range(len(policy[0])), list(policy[0].values()), align='center')
-        plt.xticks(range(len(policy[0])), list(policy[0].keys()), rotation=30, fontsize=8)
-        plt.ylabel("# of Sentences in Policy")
-        plt.savefig(outfile_rule_bar)
-        print_progress_bar(i, len(policy_sentence_stats), prefix = 'Stats Reporting Progress:', suffix = 'Complete', length = 50)
+    outfile_rule_bar = output_folder + fname + timestamp + '_rule_bar.png'
+    plt.bar(range(len(rule_dict)), list(rule_dict.values()), align='center')
+    plt.xticks(range(len(rule_dict)), list(rule_dict.keys()), rotation=30, fontsize=8)
+    plt.ylabel("# of Sentences in Policy")
+    plt.savefig(outfile_rule_bar)
+    with index.get_lock():
+        index.value += 1
+        print_progress_bar(index.value, num_successful_policies, prefix = 'Stats Reporting Progress:', suffix = 'Complete', length = 50)
 
-def generate_rule_hist_figs(policy_sentence_stats, outfile_rule_hists, num_files):
+def generate_rule_hist_figs(policy_sentence_stats, num_files):
     """
     Creates aggregate representation of the rule_vals dictionaries
     collected from every successfully parsed file.  Produces histograms
@@ -309,39 +311,39 @@ def apply_sentence_rules(parser, sentence):
     rule_hits = []
     if num_words < 5:
         # probably due to things like addresses or header fragments
-        parser.rule_vals["SHORT"] = parser.rule_vals["SHORT"] + 1
+        parser.rule_vals["SHORT"] += 1
         rule_hits.append("SHORT")
     if num_words > 85:
         # probably a run-on sentence that hasn't been properly parsed
-        parser.rule_vals["LONG"] = parser.rule_vals["LONG"] + 1
+        parser.rule_vals["LONG"] += 1
         rule_hits.append("LONG")
     if not pattern_uppercase_first.match(sentence):
         # probably due to improperly scraped fragment (like from a div)
         # might be able to go back to these and re-parse
-        parser.rule_vals["START_CAP"] = parser.rule_vals["START_CAP"] + 1
+        parser.rule_vals["START_CAP"] += 1
         rule_hits.append("START_CAP")
     if not pattern_sentence_end_punc.search(sentence):
         # usually the beginning of a list (and ends with ':')
-        parser.rule_vals["END_PUNC"] = parser.rule_vals["END_PUNC"] + 1
+        parser.rule_vals["END_PUNC"] += 1
         rule_hits.append("END_PUNC")
     if pattern_prefix_noise.match(sentence):
         # things like "1. " or "A: " that are more like headings in an outline
         # might be able to go back to these and re-parse
-        parser.rule_vals["PRE_NOISE"] = parser.rule_vals["PRE_NOISE"] + 1
+        parser.rule_vals["PRE_NOISE"] += 1
         rule_hits.append("PRE_NOISE")
     if is_header_fragment(sentence):
         # > 50% words start with a capital letter, usually when things
         # that are usually in <hX> tags are part of <p> tags.
-        parser.rule_vals["HEAD_FRAG"] = parser.rule_vals["HEAD_FRAG"] + 1
+        parser.rule_vals["HEAD_FRAG"] += 1
         rule_hits.append("HEAD_FRAG")
     if sentence.startswith("<META: ") and sentence.endswith("/META>"):
         # these in-string tags used to describe things the parser
         # does that may affect the content of the sentencs.
-        parser.rule_vals["META"] = parser.rule_vals["META"] + 1
+        parser.rule_vals["META"] += 1
         rule_hits.append("META")
     if len(rule_hits) == 0:
         # if none of the above rules are flagged, call the sentence good
-        parser.rule_vals["GOOD"] = parser.rule_vals["GOOD"] + 1
+        parser.rule_vals["GOOD"] += 1
    
     return rule_hits
 
@@ -419,21 +421,18 @@ def process_policy(fname):
         fp.write(out_string)
 
     # Update progress bar
-    lock = Lock()
-    lock.acquire()
-    try:
-        index.value = index.value + 1
-        print_progress_bar(index.value + 1, len(files), prefix = 'Parsing Progress:', suffix = 'Complete', length = 50)
-    finally:
-        lock.release()
+    with index.get_lock():
+        index.value += 1
+        print_progress_bar(index.value, len(files), prefix = 'Parsing Progress:', suffix = 'Complete', length = 50)
 
     # Decide whether the parsing was successful
     remaining_sentences = compare_parsed_text(parser,auto_stripped_text)
     if len(remaining_sentences) > 5:
         # parsing failed --> don't bother doing anything else to this policy
+        lock = Lock()   # do full lock here because err.txt is a single shared file
         lock.acquire()
         try:
-            num_failed_policies.value = num_failed_policies.value + 1
+            num_failed_policies.value += 1
             with open(outfile_compare, "a") as fp:
                 fp.write("\n\n".join(remaining_sentences) + "\n")
             with open("err.txt", "a") as fp:
@@ -447,7 +446,10 @@ def process_policy(fname):
         return (parser.rule_vals.copy(), fname)
 
 def start_process(i, failed):
-    print('Starting', current_process().name)
+    """
+    Set inter-process shared values to global so they can be accessed.
+    """
+    # print('Starting', current_process().name)
     global index, num_failed_policies
     index = i
     num_failed_policies = failed
@@ -463,22 +465,48 @@ if __name__ == '__main__':
     # use this for the entire dataset
     # files = [name for name in os.listdir(dataset_html) if os.path.isfile(os.path.join(dataset_html, name))]
     total_files = len(files)
-
+    
+    # Use Multithreading pool instead of other method because the pool
+    # will automatically avoid the idle-process problem in chunking
+    # where one chunk has less processing time than another.
+    # https://nathangrigg.com/2015/04/python-threading-vs-processes
+    # https://pymotw.com/3/multiprocessing/communication.html
+    # https://docs.python.org/3.7/library/multiprocessing.html#sharing-state-between-processes
+    # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value
+    pool_size = cpu_count() * 2
     index = Value('i',0)                # shared val, index of current parsed file
     num_failed_policies = Value('i',0)  # shared val, number of policies on which parsing failed at some point
-    pool_size = cpu_count() * 2
     pool = Pool(
         processes=pool_size,
         initializer=start_process,
         initargs=(index, num_failed_policies)
     )
     policy_sentence_stats = pool.map(process_policy, files)
+    pool.close()  # no more tasks
+    pool.join()  # wrap up current tasks
 
     # remove policies that failed parsing
     policy_sentence_stats = list(filter(None, policy_sentence_stats))
-
+    num_successful_policies = total_files - num_failed_policies.value
+    
     # output bar graphs and histogram of rule hits for all files
-    generate_rule_bar_figs(policy_sentence_stats)
-    print("\n")
-    generate_rule_hist_figs(policy_sentence_stats, total_files - num_failed_policies.value)
-    print("\nSuccessfully parsed " + str(((total_files - num_failed_policies.value) / total_files) * 100) + "% of the " + str(total_files) + " files.")
+    # has to be miltiprocessed in separate pool from parsing pool b/c
+    # of restrictions on GUI commands inside child processes.
+    # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.starmap
+    # https://github.com/spacetelescope/PyFITS/issues/38#issuecomment-26834719
+    matplotlib.use('agg')                   # don't know why this works
+    fig_index = Value('i',0)                # shared val, index of current stats file
+    placeholder = Value('i',0)              # placeholder val to fill the start_process func
+    pool = Pool(
+        processes=pool_size,
+        initializer=start_process,
+        initargs=(fig_index, placeholder)
+    )
+    pool.starmap(generate_rule_bar_figs, policy_sentence_stats)
+    pool.close()  # no more tasks
+    pool.join()  # wrap up current tasks
+
+    print("Generating last rule histogram...")
+    generate_rule_hist_figs(policy_sentence_stats, num_successful_policies)
+    
+    print("Successfully parsed " + str((num_successful_policies / total_files) * 100) + "% of the " + str(total_files) + " files.")

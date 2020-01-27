@@ -17,3 +17,12 @@ requirements.txt file by running the following:
 ```
 $ pip freeze -l > requirements.txt
 ```
+
+# Environment Notes
+MacOS Catilina (10.15) and above have limited the user's default ability
+to multithread.  If running these versions of the OS, need to add the
+following line to ~/.bash_profile and reload the shell.
+```
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+```
+Source: https://stackoverflow.com/questions/50168647/multiprocessing-causes-python-to-crash-and-gives-an-error-may-have-been-in-progr

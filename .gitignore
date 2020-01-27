@@ -14,6 +14,9 @@ src/scraper/output.txt
 # div testing files
 src/scraper/divtest/
 
+# randomized selection of 500 input files
+src/scraper/rand_files.txt
+
 # Input for verification of policies
 src/verification/policies_ground_truth/*
 src/verification/policies_test/*

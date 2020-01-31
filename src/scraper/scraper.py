@@ -28,6 +28,7 @@ class StripThread(threading.Thread):
         for fname in self.chunk:
             # print("Thread " + str(self.thread_num) + ": processing " + fname)
 
+
             # read html to BeautifulSoup Parser
             with open(self.html_dir + fname, "r") as fp:
                 soup = BeautifulSoup(fp.read(), 'html.parser')
@@ -37,12 +38,14 @@ class StripThread(threading.Thread):
                 script.decompose()
 
             # use the below line if you want the text exactly as in browser
-            # txt = soup.get_text()
-            # use the below line to force the text to be space-separated
-            txt = soup.get_text(" ", strip=True)
+            txt = soup.get_text()
+            # use the below line if you want the text to be space-separated
+            # txt = soup.get_text(" ", strip=True)
+            # use the below line to force the text to be completely stripped
+            # txt = soup.get_text("", strip=True)
 
             # remove leading/trailing whitespace on each line
-            txt = " ".join((t.strip() for t in txt.split("\n")))
+            txt = "".join((t.strip() for t in txt.split("\n")))
 
             # write stripped html to text file
             with open(self.text_dir + fname.split(".")[0] + ".txt", "w") as fp:
@@ -85,8 +88,8 @@ class Scraper:
 
 
 if __name__ == "__main__":
-    html_dir = "../../data/policies/html_top10/"
-    text_dir = "../../data/policies/text_top10/"
+    html_dir = "../../data/policies/html/"
+    text_dir = "../../data/policies/text_redo/"
 
     # num_chunks specifies how many threads are used to process the html
     # set to 1 if want to process sequentially in single thread

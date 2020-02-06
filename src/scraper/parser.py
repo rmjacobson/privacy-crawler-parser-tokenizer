@@ -9,11 +9,12 @@ Preserves document structure and traceability in sentence outputs.
 """
 
 from bs4 import BeautifulSoup, Comment, NavigableString, CData, Tag, ProcessingInstruction
-import sys, os, datetime, re, nltk, csv
+import sys, os, time, datetime, re, nltk, csv
 from nltk.tokenize import sent_tokenize
 import matplotlib
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, Lock, Value, cpu_count, current_process
+import signal
 
 pattern_header = re.compile("h\d")
 pattern_list = re.compile("[u|o]l")
@@ -120,27 +121,22 @@ def write_tag_list_to_csv(parser, l, output_file):
     tag_list = []
     headings = ("Sequential Index","Tag Index","Preceeded By","Proceeded By","Tag Text")
     for tag_index, seq_index in enumerate(l, start=0):
-        if seq_index < 1:
-            tag_tuple = (
-                seq_index,
-                tag_index,
-                "None",
-                parser.seq_list[seq_index+1].tag_type + str(parser.seq_list[seq_index+1].tag_index),
-                parser.seq_list[seq_index].content_string)
-        elif seq_index > (len(parser.seq_list) - 2):
-            tag_tuple = (
-                seq_index,
-                tag_index,
-                parser.seq_list[seq_index-1].tag_type + str(parser.seq_list[seq_index-1].tag_index),
-                "None",
-                parser.seq_list[seq_index].content_string)
-        else:
-            tag_tuple = (
-                seq_index,
-                tag_index,
-                parser.seq_list[seq_index-1].tag_type + str(parser.seq_list[seq_index-1].tag_index),
-                parser.seq_list[seq_index+1].tag_type + str(parser.seq_list[seq_index+1].tag_index),
-                parser.seq_list[seq_index].content_string)
+        # do the exceptions for edges of lists or for short lists
+        try:
+            prec_by = parser.seq_list[seq_index-1].tag_type + str(parser.seq_list[seq_index-1].tag_index)
+        except IndexError as e:
+            prec_by = "None"
+        try:
+            proc_by = str(parser.seq_list[seq_index+1].tag_type + str(parser.seq_list[seq_index+1].tag_index))
+        except IndexError as e:
+            proc_by = "None"
+
+        tag_tuple = (
+            seq_index,
+            tag_index,
+            prec_by,
+            proc_by,
+            parser.seq_list[seq_index].content_string)
         tag_list.append(tag_tuple)
 
     with open(output_file,'w') as fp:
@@ -241,21 +237,6 @@ def is_header_fragment(sentence):
     else:
         return False
 
-def generate_rule_bar_figs(rule_dict, fname):
-    """
-    Creates bar graphs of every successfully parsed policy's sentence
-    rule hits.  Note: has to be done AFTER all policies have been parsed
-    because of restrictions on GUI commands inside child processes.
-    """
-    outfile_rule_bar = output_folder + fname + timestamp + '_rule_bar.png'
-    plt.bar(range(len(rule_dict)), list(rule_dict.values()), align='center')
-    plt.xticks(range(len(rule_dict)), list(rule_dict.keys()), rotation=30, fontsize=8)
-    plt.ylabel("# of Sentences in Policy")
-    plt.savefig(outfile_rule_bar)
-    with index.get_lock():
-        index.value += 1
-        print_progress_bar(index.value, num_successful_policies, prefix = 'Stats Reporting Progress:', suffix = 'Complete', length = 50)
-
 def generate_rule_hist_figs(policy_sentence_stats, num_files):
     """
     Creates aggregate representation of the rule_vals dictionaries
@@ -347,7 +328,7 @@ def apply_sentence_rules(parser, sentence):
    
     return rule_hits
 
-def extract_sentences(parser, outfile_sentences):
+def extract_sentences(parser, outfile_sentences, outfile_rule_bar):
     """ 
     Takes readable text from the parser's list outputs and attempts to
     tokenize the strings into sentences.
@@ -381,6 +362,12 @@ def extract_sentences(parser, outfile_sentences):
         csv_writer.writerow(headings)
         csv_writer.writerows(sentences_list)
 
+    # create bar graphs of policy's sentence rule hits
+    plt.bar(range(len(parser.rule_vals)), list(parser.rule_vals.values()), align='center')
+    plt.xticks(range(len(parser.rule_vals)), list(parser.rule_vals.keys()), rotation=30, fontsize=8)
+    plt.ylabel("# of Sentences in Policy")
+    plt.savefig(outfile_rule_bar)
+
 def process_policy(fname):
     with open(dataset_html + fname, "r") as fp:
         html_contents = fp.read()
@@ -395,24 +382,28 @@ def process_policy(fname):
         # this isn't considered failure because if the whole text is empty, there's no way to compare
         return None
 
-    soup = BeautifulSoup(html_contents, 'html.parser')
-
+    # build all the output files
     outfile_sequential = output_folder + fname[:-5] + timestamp + '_sequential.txt'
     outfile_sentences = output_folder + fname[:-5] + timestamp + '_sentences.csv'
     outfile_paragraphs = output_folder + fname[:-5] + timestamp + '_paragraphs.csv'
     outfile_headers = output_folder + fname[:-5] + timestamp + '_headers.csv'
     outfile_lists = output_folder + fname[:-5] + timestamp + '_lists.csv'
     outfile_compare = output_folder + fname[:-5] + timestamp + '_compare.txt'
+    outfile_rule_bar = output_folder + fname[:-5] + timestamp + '_rule_bar.png'
 
     # walk tree to parse all the beautiful soup tags and build comparison text
+    soup = BeautifulSoup(html_contents, 'html.parser')
     parser = ParserData()
     walk_tree(soup, parser)
 
     # output the parsed tags to their appropriate files
-    write_tag_list_to_csv(parser, parser.paragraph_list, outfile_paragraphs)
-    write_tag_list_to_csv(parser, parser.header_list, outfile_headers)
-    write_tag_list_to_csv(parser, parser.list_list, outfile_lists)
-    
+    if len(parser.paragraph_list) > 0:
+        write_tag_list_to_csv(parser, parser.paragraph_list, outfile_paragraphs)
+    if len(parser.header_list) > 0:
+        write_tag_list_to_csv(parser, parser.header_list, outfile_headers)
+    if len(parser.list_list) > 0:
+        write_tag_list_to_csv(parser, parser.list_list, outfile_lists)
+
     # go through entire sequential list to build sequential file
     out_string = ""
     for element in parser.seq_list:
@@ -427,28 +418,36 @@ def process_policy(fname):
 
     # Decide whether the parsing was successful
     remaining_sentences = compare_parsed_text(parser,auto_stripped_text)
+    lock = Lock()   # do full lock here because err.txt & success.txt are shared files
     if len(remaining_sentences) > 5:
         # parsing failed --> don't bother doing anything else to this policy
-        lock = Lock()   # do full lock here because err.txt is a single shared file
         lock.acquire()
         try:
             num_failed_policies.value += 1
             with open(outfile_compare, "a") as fp:
                 fp.write("\n\n".join(remaining_sentences) + "\n")
             with open("err.txt", "a") as fp:
-                fp.write(fname + " has " + str(len(remaining_sentences)) + " left.\n")
+                fp.write(fname[:-5] + " has " + str(len(remaining_sentences)) + " left.\n")
         finally:
             lock.release()
         return None
     else:
         # parsing succeeded --> sentence tokenize as much as possible from
-        extract_sentences(parser, outfile_sentences)
+        extract_sentences(parser, outfile_sentences, outfile_rule_bar)
+        lock.acquire()
+        try:
+            with open("success.txt", "a") as fp:
+                fp.write(fname[:-5] + " has " + str(parser.rule_vals["GOOD"]) + " good sentences.\n")
+        finally:
+            lock.release()
         return (parser.rule_vals.copy(), fname)
 
 def start_process(i, failed):
     """
     Set inter-process shared values to global so they can be accessed.
+    Ignore SIGINT in child workers, will be handled to enable restart.
     """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     # print('Starting', current_process().name)
     global index, num_failed_policies
     index = i
@@ -459,54 +458,40 @@ if __name__ == '__main__':
     dataset_text = "../../data/policies/text_redo/"
     output_folder = "./output/"
     timestamp = '_{0:%Y%m%d-%H%M%S}'.format(datetime.datetime.now())
+    parse_index = Value('i',0)          # shared val, index of current parsed file
+    num_failed_policies = Value('i',0)  # shared val, number of policies on which parsing failed at some point
 
     # use this for a selection of 500 random files
-    files = [line.rstrip('\n') for line in open("./rand_files.txt")]
+    # files = [line.rstrip('\n') for line in open("./rand_files.txt")]
     # use this for the entire dataset
-    # files = [name for name in os.listdir(dataset_html) if os.path.isfile(os.path.join(dataset_html, name))]
+    files = [name for name in os.listdir(dataset_html) if os.path.isfile(os.path.join(dataset_html, name))]
     total_files = len(files)
+    print("got files, start pool")
     
-    # Use Multithreading pool instead of other method because the pool
-    # will automatically avoid the idle-process problem in chunking
-    # where one chunk has less processing time than another.
+    # Use Multithreading pool because the pool will automatically avoid
+    # the chunking idle-process problem where one chunk needs less time
+    # than another because of difference in policy length.
     # https://nathangrigg.com/2015/04/python-threading-vs-processes
     # https://pymotw.com/3/multiprocessing/communication.html
     # https://docs.python.org/3.7/library/multiprocessing.html#sharing-state-between-processes
     # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value
+    # https://stackoverflow.com/questions/44774853/exit-multiprocesses-gracefully-in-python3
     pool_size = cpu_count() * 2
-    index = Value('i',0)                # shared val, index of current parsed file
-    num_failed_policies = Value('i',0)  # shared val, number of policies on which parsing failed at some point
+    matplotlib.use('agg')   # don't know why this works, but allows matplotlib to execute in child procs
     pool = Pool(
         processes=pool_size,
         initializer=start_process,
-        initargs=(index, num_failed_policies)
+        initargs=(parse_index, num_failed_policies)
     )
     policy_sentence_stats = pool.map(process_policy, files)
     pool.close()  # no more tasks
-    pool.join()  # wrap up current tasks
+    pool.join()   # merge all child processes
 
     # remove policies that failed parsing
     policy_sentence_stats = list(filter(None, policy_sentence_stats))
     num_successful_policies = total_files - num_failed_policies.value
-    
-    # output bar graphs and histogram of rule hits for all files
-    # has to be miltiprocessed in separate pool from parsing pool b/c
-    # of restrictions on GUI commands inside child processes.
-    # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool.starmap
-    # https://github.com/spacetelescope/PyFITS/issues/38#issuecomment-26834719
-    matplotlib.use('agg')                   # don't know why this works
-    fig_index = Value('i',0)                # shared val, index of current stats file
-    placeholder = Value('i',0)              # placeholder val to fill the start_process func
-    pool = Pool(
-        processes=pool_size,
-        initializer=start_process,
-        initargs=(fig_index, placeholder)
-    )
-    pool.starmap(generate_rule_bar_figs, policy_sentence_stats)
-    pool.close()  # no more tasks
-    pool.join()  # wrap up current tasks
 
     print("Generating last rule histogram...")
     generate_rule_hist_figs(policy_sentence_stats, num_successful_policies)
-    
+
     print("Successfully parsed " + str((num_successful_policies / total_files) * 100) + "% of the " + str(total_files) + " files.")

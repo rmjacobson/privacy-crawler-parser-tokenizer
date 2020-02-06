@@ -10,6 +10,7 @@ src/scraper/amazon_upload.py
 # Output of parser
 src/scraper/output/
 src/scraper/err.txt
+src/scraper/success.txt
 
 # div testing files
 src/scraper/divtest/

@@ -19,8 +19,7 @@ src/scraper/divtest/
 src/scraper/rand_files.txt
 
 # Input for verification of policies
-src/verification/policies_ground_truth/*
-src/verification/policies_test/*
+src/verification/ground_truth_html/
 
 # Output of statistics scripts
 src/statistics/*out*

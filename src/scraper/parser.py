@@ -22,7 +22,7 @@ pattern_prefix_noise = re.compile("^(?:[a-zA-Z0-9]|[-](?=[^-]*$)){1,3}$\:*")
 pattern_uppercase_first = re.compile("[A-Z]")
 pattern_sentence_end_punc = re.compile("[\.?!]$")
 
-def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+def print_progress_bar(iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
     """
     Call in a loop to create terminal progress bar
     @params:
@@ -83,7 +83,7 @@ def skip_tag(element):
     Param:  element - bs4 tag
     Return: Boolean: True if tag is irrelevant, False if tag is relevant
     """
-    if element.name in ["style", "script", "noscript", "head", "title", "meta", "[document]"]:
+    if element.name in ["style", "script", "noscript", "head", "title", "meta", "[document]", "img", "iframe"]:
         # this is an "invisible" tag the reader would not see
         return True
     if element.name in ["header", "footer", "nav"]:

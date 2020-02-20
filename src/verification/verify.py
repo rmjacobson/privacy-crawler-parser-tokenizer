@@ -44,11 +44,11 @@ def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1
 
 def loadDictionary():
     dictionaryFile = open('../utils/dictionary.txt')
-    englishWords = {}
+    ENGLISH_WORDS = {}
     for word in dictionaryFile.read().split('\n'):
-        englishWords[word] = None
+        ENGLISH_WORDS[word] = None
         dictionaryFile.close()
-    return englishWords
+    return ENGLISH_WORDS
 
 def getEnglishCount(html_contents):
     ENGLISH_WORDS = loadDictionary()

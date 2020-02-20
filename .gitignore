@@ -24,6 +24,9 @@ src/verification/ground_truth_html/
 # Output of statistics scripts
 src/statistics/*out*
 
+# Crawler inputs
+src/crawler/alexa.json
+
 # Archive
 archive
 

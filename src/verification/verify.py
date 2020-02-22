@@ -125,7 +125,7 @@ def remove_company_names(html_contents, name):
     html_contents = re.sub(name, " ", html_contents, flags=re.IGNORECASE)
     return html_contents
 
-def get_ground_truth():
+def get_ground_truth(ground_truth_html_dir):
     """
     This function builds one massive ground truth string containing
     the relevant text of all html documents in the ground truth
@@ -134,12 +134,12 @@ def get_ground_truth():
     various experiments showed policies on the edge of acceptable
     cosine similarity.
 
-    In:     n/a, ground_truth_html directory set in main
+    In:     n/a, ground_truth_html_dir directory set in main
     Out:    string containing text of all ground truth policy html docs
     """
     ground_truth = ""
-    for policy in os.listdir(ground_truth_html):
-        with open(ground_truth_html + policy, "rb") as fp:
+    for policy in os.listdir(ground_truth_html_dir):
+        with open(ground_truth_html_dir + policy, "rb") as fp:
             html_contents = fp.read()
         html_contents = remove_company_names(strip_text(html_contents), policy[:-5]) + " "
         ground_truth += html_contents
@@ -240,12 +240,12 @@ def start_process(i):
     index = i
 
 if __name__ == '__main__':
-    ground_truth_html = "./ground_truth_html/"
+    ground_truth_html_dir = "./ground_truth_html/"
     policies_html_dir = "../../data/policies/html/"
     test_set = "./test_set/"
 
     # get ground truth in one string
-    ground_truth = get_ground_truth()
+    ground_truth = get_ground_truth(ground_truth_html_dir)
     files = [f for f in os.listdir(policies_html_dir) if os.path.isfile(os.path.join(policies_html_dir, f))]
     
     index = Value("i",0)          # shared val, index of current parsed file

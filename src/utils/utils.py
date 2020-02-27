@@ -1,3 +1,9 @@
+# Instantiate Chrome Driver
+# options = Options()
+# options.headless = True
+# driver = webdriver.Chrome(options=options)
+# from selenium import webdriver
+# from selenium.webdriver.chrome.options import Options
 import requests
 
 def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
@@ -103,6 +109,8 @@ def request(url):
             "Accept-Encoding": accept_encoding
         }
         r = requests.get(url, headers=headers)
+        if not r:
+            return ""
         # if "forbes" in url:
             # print(r.content)
     except (exceptions) as e:

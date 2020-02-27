@@ -11,22 +11,14 @@ containing privacy policies and a txt file containing an audit trail
 of links visited and decisions about those policies.
 """
 
-import argparse, json, os, pandas as pd, re, requests, signal, sys
-import matplotlib
-from multiprocessing import Pool, Lock, Value, cpu_count, current_process
-# import pandas as pd
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+import argparse, json, matplotlib, os, pandas as pd, re, signal, sys
+from multiprocessing import Pool, Value, cpu_count, current_process, Manager
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-# from selenium import webdriver
-# from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-sys.path.insert(0, '/Users/Ryan/Desktop/privacy_proj/Deep-NER/src/utils/')
+sys.path.insert(0, '../utils/')
 from utils import isEnglish, print_progress_bar, request
 
-# Instantiate Chrome Driver
-# options = Options()
-# options.headless = True
-# driver = webdriver.Chrome(options=options)
 PRIVACY_POLICY_KEYWORDS = ['privacy']
 
 class VerifyJsonExtension(argparse.Action):
@@ -42,15 +34,24 @@ class VerifyJsonExtension(argparse.Action):
         else:
             parser.error("File doesn't end with '.json'")
 
+class DomainLink():
+    def __init__(self, link, sim_score, html_outfile, stripped_outfile, access_success, valid):
+        self.link = link
+        self.sim_score = sim_score
+        self.html_outfile = html_outfile
+        self.stripped_outfile = stripped_outfile
+        self.access_success = access_success
+        self.valid = valid
+
 class CrawlReturn():
     def __init__(self, domain, access_success):
         self.domain = domain
         self.sim_avg = 0.0
         self.link_list = []
         self.access_success = access_success
-    def add_link(self, link, sim_score, html_outfile, stripped_outfile, access_success):
-        link_tuple = (link, sim_score, html_outfile, stripped_outfile, access_success)
-        self.link_list.append(link_tuple)
+    def add_link(self, link, sim_score, html_outfile, stripped_outfile, access_success, valid):
+        link = DomainLink(link, sim_score, html_outfile, stripped_outfile, access_success, valid)
+        self.link_list.append(link)
         self.sim_avg = self.sim_avg + ((sim_score-self.sim_avg)/len(self.link_list))
 
 def remove_company_names(html_contents, name):
@@ -124,7 +125,7 @@ def verify(html_contents, ground_truth):
     # return sim_score[0,1] >= cos_sim_threshold
     return sim_score[0,1]
 
-def find_policy_links(full_url, soup):
+def find_policy_links(full_url, html):
     """
     Find all the links on the page.  Only returns links which contain some case
     permutation of the PRIVACY_POLICY_KEYWORDS.  Exact duplicate links removed
@@ -135,6 +136,7 @@ def find_policy_links(full_url, soup):
             soup - BeautifulSoup4 object instantiated with the HTML of the URL
     Out:    list of all links on the page
     """
+    soup = BeautifulSoup(html, "html.parser")
     links = []
     for kw in PRIVACY_POLICY_KEYWORDS:
         all_links = soup.find_all("a")
@@ -182,82 +184,117 @@ def strip_text(html):
     return " ".join([text for text in soup.stripped_strings])
 
 def crawl(domain):
+    """
+    Primary function for the process pool.
+    Crawl websites for links to privacy policies.  First check if
+    the website can be reached at all, then find list of policy links
+    on first page.  Then loop through links to see if the links are 
+    valid policies.  Keep statistics in every subprocess for summary
+    at end.
+
+    In:     domain landing page string
+    Out:    CrawlReturn obj containing links, statistics about links,
+            output files, etc.
+    """
+
+    # first get the domain landing page via HTTPS
     full_url = domain if ("http" in domain) else "http://" + domain
     full_url = full_url if ("https://" in full_url) else full_url.replace("http://", "https://")
-    # print("url = " + full_url)
-    html = request(full_url)
-    if html == "":
-        print("got nothing for" + domain)
-        # Update progress bar
-        with index.get_lock():
+    domain_html = request(full_url)
+    if strip_text(domain_html) == "":
+        failed_access_domain = CrawlReturn(domain, False)
+        failed_access_domains.append(failed_access_domain)
+        with index.get_lock():  # Update progress bar
             index.value += 1
             print_progress_bar(index.value, len(domain_list), prefix = 'Crawling Progress:', suffix = 'Complete', length = 50)
-        return CrawlReturn(domain, False)
-    
-    # get links from the domain landing page
-    # domain_soup = BeautifulSoup(markup=html, features='lxml')
-    domain_soup = BeautifulSoup(html, "html.parser")
-    links = find_policy_links(full_url, domain_soup)
+        return failed_access_domain
 
-    # go down the link rabbit hole to download the html and verrify that they are policies
+    # get links from domain landing page, return if none found
+    links = find_policy_links(full_url, domain_html)
+    if len(links) == 0:
+        no_link_domain = CrawlReturn(domain, True)
+        no_link_domains.append(no_link_domain)
+        with index.get_lock():  # Update progress bar
+            index.value += 1
+            print_progress_bar(index.value, len(domain_list), prefix = 'Crawling Progress:', suffix = 'Complete', length = 50)
+        return no_link_domain
+
+    # go down the link rabbit hole to download the html and verify that they are policies
     retobj = CrawlReturn(domain, True)
+    domain_successful_links = []
+    domain_failed_links = []
     for i, link in enumerate(links):
         link_html = request(link)
         link_contents = strip_text(link_html)
         if link_contents == "":
-            retobj.add_link(link, 0.0, "N/A", "N/A", False)
+            domain_failed_links.append(link)
+            retobj.add_link(link, 0.0, "N/A", "N/A", False, False)
             continue    # policy is empty, skip this whole thing
         sim_score = verify(link_contents, ground_truth)
         is_policy = sim_score >= cos_sim_threshold
         if is_policy:
+            domain_successful_links.append(link)
             html_outfile = output_folder + domain + "_" + str(i) + ".html"
             with open(html_outfile, "a") as fp:
                 fp.write(link_contents)
             stripped_outfile = output_folder + domain + "_" + str(i) + ".txt"
             with open(stripped_outfile, "a") as fp:
                 fp.write(link_contents)
-            retobj.add_link(link, sim_score, html_outfile, stripped_outfile, True)
+            retobj.add_link(link, sim_score, html_outfile, stripped_outfile, True, True)
         else:
-            retobj.add_link(link, sim_score, "N/A", "N/A", True)
+            domain_failed_links.append(link)
+            retobj.add_link(link, sim_score, "N/A", "N/A", True, False)
+    
+    # check whether at least one link in the domain was successful
+    successful_links.extend(domain_successful_links)
+    failed_links.extend(domain_failed_links)
+    if sum(link.valid == True for link in retobj.link_list) == 0:
+        failed_link_domains.append(retobj)
+    else:
+        successful_domains.append(retobj)
 
-    # Update progress bar
-    with index.get_lock():
+    with index.get_lock():  # Update progress bar
         index.value += 1
         print_progress_bar(index.value, len(domain_list), prefix = 'Crawling Progress:', suffix = 'Complete', length = 50)
-
     return retobj
 
 def produce_summary(all_links):
     """
     Produce string output for the summary file in the format of:
-    domain.com
-    => https://www.domain.com/path/to/policy.html
+    domain.com (avg sim score = 0.XX)
+    => (link message) https://www.domain.com/path/to/policy.html
 
     In:     list CrawlerReturn objects containing links and statistics
     Out:    string representation to be written out to file.
     """
-    successful_domains = sum(len(domain.link_list) != 0 for domain in all_links)
-    access_fail_domains = sum(domain.access_success == False for domain in all_links)
-    summary_string = "Summary of Crawler Output\n"
-    summary_string += "Successful Domains = " + str(successful_domains) + "\n"
-    summary_string += "No links found for " + str(len(all_links)-successful_domains) + "\n"
-    summary_string += "Could not access " + str(access_fail_domains) + "\n"
-
+    summary_string = "Summary of Crawler Output:\n"
+    summary_string += "   # of Successful Domains = " + str(len(successful_domains)) + " (" + str(round(len(successful_domains)/len(domain_list)*100, 2)) + "%).\n"
+    summary_string += "   Could not access " + str(len(failed_access_domains)) + " (" + str(round(len(failed_access_domains)/len(domain_list)*100, 2)) + "%) domains.\n"
+    summary_string += "   No links found for " + str(len(no_link_domains)) + " (" + str(round(len(no_link_domains)/len(domain_list)*100, 2)) + "%) domains.\n"
+    summary_string += "   No valid links found for " + str(len(failed_link_domains)) + " (" + str(round(len(failed_link_domains)/len(domain_list)*100, 2)) + "%) domains.\n"
+    summary_string += "   # of successful links = " + str(len(successful_links)) + ".\n"
+    summary_string += "   # of failed links = " + str(len(failed_links)) + ".\n"
+    summary_string += "\n"
+    
     for domain in all_links:
-        if len(domain.link_list) == 0:
-            summary_string += (domain.domain + " -- NONE FOUND\n\n")
+        if not domain.access_success:
+            failed_access_domains.append(domain)
+            continue;
+        if not domain.access_success:
+            summary_string += (domain.domain + " -- NO_ACCESS\n\n")
+        if domain.access_success and len(domain.link_list) == 0:
+            summary_string += (domain.domain + " -- NO_LINKS\n\n")
         else:
             sim_avg = str(round(domain.sim_avg, 2))
             summary_string += (domain.domain + " (avg sim = " + sim_avg + ")" + "\n")
             for link in domain.link_list:
-                sim_score = str(round(link[1], 2))
-                if link[4] == False:
-                    summary_string += ("=> (Could not read link) " + link[0] + " -> " + link[2] + " & " + link[3] + "\n")
+                sim_score = str(round(link.sim_score, 2))
+                if link.access_success == False:
+                    summary_string += ("=> (NO_ACCESS) " + link.link + " -> ")
                 else:
-                    summary_string += ("=> (" + sim_score + ") " + link[0] + " -> " + link[2] + " & " + link[3] + "\n")
-            summary_string += "\n"
+                    summary_string += ("=> (" + sim_score + ") " + link.link + " -> ")
+            summary_string += (link.html_outfile + " & " + link.stripped_outfile + "\n\n")
     return summary_string
-
 
 def start_process(i):
     """
@@ -269,7 +306,7 @@ def start_process(i):
     index = i
 
 if __name__ == '__main__':
-    argparse = argparse.ArgumentParser(description="Read in list of top sites.")
+    argparse = argparse.ArgumentParser(description="Crawls provided domains to gather privacy policy html files.")
     argparse.add_argument(  "domain_list_file",
                             help="json file containing list of top N sites to visit.",
                             action=VerifyJsonExtension)
@@ -287,13 +324,21 @@ if __name__ == '__main__':
     output_folder = args.output_folder
 
     # get domain list and verification ground truth
-    with open(domain_list_file) as fp:
+    with open(domain_list_file, "r") as fp:
         domain_list = json.load(fp).values()
     ground_truth = get_ground_truth(ground_truth_html_dir)
 
+    # set up shared resources for subprocesses
+    index = Value('i',0)        # shared val, index of current crawled domain
+    list_manager = Manager()    # manages lists shared among child processes  
+    successful_links = list_manager.list()       # links that contain valid policies
+    failed_links = list_manager.list()           # either couldn't parse or couldn't visit link
+    successful_domains = list_manager.list()     # at least one link in each domain is a valid policy
+    no_link_domains = list_manager.list()        # domains with no links
+    failed_link_domains = list_manager.list()    # domains with no valid links
+    failed_access_domains = list_manager.list()  # domains where the initial access failed
 
     # start process pool
-    index = Value('i',0)          # shared val, index of current crawled domain
     pool_size = cpu_count() * 2
     matplotlib.use('agg')   # don't know why this works, but allows matplotlib to execute in child procs
     pool = Pool(
@@ -301,8 +346,13 @@ if __name__ == '__main__':
         initializer=start_process,
         initargs=[index]
     )
-    all_links = pool.map(crawl, domain_list)
+    all_links = pool.map(crawl, domain_list)    # map keeps domain_list order
     pool.close()  # no more tasks
     pool.join()   # merge all child processes
 
-    print(produce_summary(all_links))
+    # produce summary output files
+    print("Generating summary information...")
+    with open(output_folder + "summary.txt", "w") as fp:
+        fp.write(produce_summary(all_links))
+    # might want to add more summary files later
+    print("Done")

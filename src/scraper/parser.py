@@ -15,34 +15,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, Lock, Value, cpu_count, current_process
 import signal
+sys.path.insert(0, '../utils/')
+from utils import print_progress_bar
 
 pattern_header = re.compile("h\d")
 pattern_list = re.compile("[u|o]l")
 pattern_prefix_noise = re.compile("^(?:[a-zA-Z0-9]|[-](?=[^-]*$)){1,3}$\:*")
 pattern_uppercase_first = re.compile("[A-Z]")
 pattern_sentence_end_punc = re.compile("[\.?!]$")
-
-def print_progress_bar(iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
-    """
-    Call in a loop to create terminal progress bar
-    @params:
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-    """
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = printEnd)
-    # Print New Line on Complete
-    if iteration == total: 
-        print()
-
 
 class SequentialElement:
     """
@@ -483,7 +463,7 @@ if __name__ == '__main__':
         initializer=start_process,
         initargs=(parse_index, num_failed_policies)
     )
-    policy_sentence_stats = pool.map(process_policy, files)
+    policy_sentence_stats = pool.map(process_policy, files) # map keeps domain_list order
     pool.close()  # no more tasks
     pool.join()   # merge all child processes
 

@@ -20,76 +20,8 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
-def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
-    """
-    Call in a loop to create terminal progress bar
-    @params:
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-    """
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = printEnd)
-    # Print New Line on Complete
-    if iteration == total: 
-        print()
-
-def loadDictionary():
-    dictionaryFile = open('../utils/dictionary.txt')
-    ENGLISH_WORDS = {}
-    for word in dictionaryFile.read().split('\n'):
-        ENGLISH_WORDS[word] = None
-        dictionaryFile.close()
-    return ENGLISH_WORDS
-
-def getEnglishCount(html_contents):
-    ENGLISH_WORDS = loadDictionary()
-    html_contents = html_contents.upper()
-    html_contents = removeNonLetters(html_contents)
-    possibleWords = html_contents.split()
-    if possibleWords == []:
-        return 0.0 # no words at all, so return 0.0
-    matches = 0
-    for word in possibleWords:
-        if word in ENGLISH_WORDS:
-            matches += 1
-    return float(matches) / len(possibleWords)
-
-def removeNonLetters(html_contents):
-    UPPERLETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    LETTERS_AND_SPACE = UPPERLETTERS + UPPERLETTERS.lower() + ' \t\n'
-    lettersOnly = []
-    for symbol in html_contents:
-        if symbol in LETTERS_AND_SPACE:
-            lettersOnly.append(symbol)
-    return "".join(lettersOnly)
-
-def isEnglish(html_contents, wordPercentage=50, charPercentage=85):
-    """
-    Some policies in the crawl won't be english-language because
-    privacy policies are often written in multiple languages.  None
-    of those should have a high similarity score, but this method of
-    flagging foreign language documents is faster than the full cosine
-    similarity score, so remove these first.  By default, 50% of the
-    words in the document should be in the english dictionary, and 85%
-    of the characters should be letters rather than numbers or symbols.
-
-    In:     string representaiton of the text to be verified as english
-    Out:    boolean of whether the text is mostly english
-    """
-    wordsMatch = getEnglishCount(html_contents) * 100 >= wordPercentage
-    numLetters = len(removeNonLetters(html_contents))
-    html_contentsLettersPercentage = float(numLetters) / len(html_contents) * 100
-    lettersMatch = html_contentsLettersPercentage >= charPercentage
-    return wordsMatch and lettersMatch
+sys.path.insert(0, '../utils/')
+from utils import isEnglish, print_progress_bar, request
 
 def strip_text(html):
     """
@@ -256,7 +188,7 @@ if __name__ == '__main__':
         initializer=start_process,
         initargs=[index]
     )
-    sim_list = pool.starmap(verify, [(file, ground_truth) for file in files])
+    sim_list = pool.starmap(verify, [(file, ground_truth) for file in files])   # starmap keeps domain_list order
     pool.close()  # no more tasks
     pool.join()   # merge all child processes
 

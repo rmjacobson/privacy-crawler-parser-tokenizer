@@ -184,7 +184,7 @@ def walk_tree(soup, parser):
 
         walk_tree(element, parser)
 
-def compare_parsed_text(parser, auto_stripped_text):
+def compare_parsed_text(seq_list, auto_stripped_text):
     """
     This is a stupid workaround to the fact that bs4 parsers generally suck.
     Tries to measure whether parsing was "successful" by looking at the 
@@ -192,7 +192,7 @@ def compare_parsed_text(parser, auto_stripped_text):
     Note: can't match/replace entire elements at a time because of 
     weirdness in how certain things get scraped by bs4.
     """
-    for element in parser.seq_list:
+    for element in seq_list:
         element_segment_list = element.content_string.splitlines()
         for segment in element_segment_list:
             try:
@@ -397,7 +397,7 @@ def process_policy(fname):
         print_progress_bar(index.value, len(files), prefix = 'Parsing Progress:', suffix = 'Complete', length = 50)
 
     # Decide whether the parsing was successful
-    remaining_sentences = compare_parsed_text(parser,auto_stripped_text)
+    remaining_sentences = compare_parsed_text(parser.seq_list,auto_stripped_text)
     lock = Lock()   # do full lock here because err.txt & success.txt are shared files
     if len(remaining_sentences) > 5:
         # parsing failed --> don't bother doing anything else to this policy

@@ -131,11 +131,11 @@ def verify(policy, ground_truth):
     # Create the Document Term Matrix and pandas dataframe
     # https://www.machinelearningplus.com/nlp/cosine-similarity/
     documents = [ground_truth, html_contents]
-    count_vectorizer = TfidfVectorizer()
-    sparse_matrix = count_vectorizer.fit_transform(documents)
+    vectorizer = TfidfVectorizer()
+    sparse_matrix = vectorizer.fit_transform(documents)
     doc_term_matrix = sparse_matrix.todense()
     df = pd.DataFrame(doc_term_matrix, 
-            columns=count_vectorizer.get_feature_names(),
+            columns=vectorizer.get_feature_names(),
             index=['ground_truth', 'corp'])
 
     # calculate cosine similarity of the ground truth and the policy

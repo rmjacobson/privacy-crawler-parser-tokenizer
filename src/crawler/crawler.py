@@ -16,6 +16,7 @@ from multiprocessing import Pool, Value, cpu_count, current_process, Manager
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from bs4 import BeautifulSoup
+from hashlib import md5
 sys.path.insert(0, '../utils/')
 from utils import isEnglish, print_progress_bar, request
 
@@ -35,13 +36,14 @@ class VerifyJsonExtension(argparse.Action):
             parser.error("File doesn't end with '.json'")
 
 class DomainLink():
-    def __init__(self, link, sim_score, html_outfile, stripped_outfile, access_success, valid):
+    def __init__(self, link, sim_score, html_outfile, stripped_outfile, access_success, valid, duplicate):
         self.link = link
         self.sim_score = sim_score
         self.html_outfile = html_outfile
         self.stripped_outfile = stripped_outfile
         self.access_success = access_success
         self.valid = valid
+        self.duplicate = duplicate
 
 class CrawlReturn():
     def __init__(self, domain, access_success):
@@ -49,8 +51,8 @@ class CrawlReturn():
         self.sim_avg = 0.0
         self.link_list = []
         self.access_success = access_success
-    def add_link(self, link, sim_score, html_outfile, stripped_outfile, access_success, valid):
-        link = DomainLink(link, sim_score, html_outfile, stripped_outfile, access_success, valid)
+    def add_link(self, link, sim_score, html_outfile, stripped_outfile, access_success, valid, duplicate):
+        link = DomainLink(link, sim_score, html_outfile, stripped_outfile, access_success, valid, duplicate)
         self.link_list.append(link)
         self.sim_avg = self.sim_avg + ((sim_score-self.sim_avg)/len(self.link_list))
 
@@ -90,6 +92,15 @@ def get_ground_truth(ground_truth_html_dir):
         ground_truth += html_contents
     return ground_truth
 
+def is_duplicate_policy(link_contents, domain):
+    # digest = md5(link_contents.encode())
+    # digest = digest.hexdigest()
+    if link_contents in policy_dict:
+        return True
+    else:
+        policy_dict[link_contents] = domain
+        return False
+
 def verify(html_contents, ground_truth):
     """
     This function will verify that the HTML we scraped is actually a privacy
@@ -105,7 +116,7 @@ def verify(html_contents, ground_truth):
     """
     # verify majority of the contents are english-language, discard if not
     if not isEnglish(html_contents):
-        print(policy + " is not english")
+        # print("is not english")
         return 0
     
     # Create the Document Term Matrix and pandas dataframe
@@ -124,6 +135,11 @@ def verify(html_contents, ground_truth):
 
     # return sim_score[0,1] >= cos_sim_threshold
     return sim_score[0,1]
+
+def clean_link(link):
+    link = link.split("#", 1)[0]
+    # link = link.split("?", 1)[0]
+    return link
 
 def find_policy_links(full_url, html):
     """
@@ -151,7 +167,8 @@ def find_policy_links(full_url, html):
 
                     # This link is complete, add it to our list
                     if "http" in final_link:
-                        links.append(final_link)
+                        # links.append(final_link)
+                        links.append(clean_link(final_link))
                         continue
 
                     # This link is incomplete. Complete it.
@@ -161,7 +178,8 @@ def find_policy_links(full_url, html):
                         final_link = "http://" + final_link[2:]
                     else:
                         final_link = full_url + final_link
-                    links.append(final_link)
+                    # links.append(final_link)
+                    links.append(clean_link(final_link))
     links = list(dict.fromkeys(links))  # remove obvious duplicates
     return links
 
@@ -181,7 +199,7 @@ def strip_text(html):
     for ignored_tag in soup(bad_tags):
         ignored_tag.decompose()
 
-    return " ".join([text for text in soup.stripped_strings])
+    return soup.get_text()
 
 def crawl(domain):
     """
@@ -223,27 +241,52 @@ def crawl(domain):
     retobj = CrawlReturn(domain, True)
     domain_successful_links = []
     domain_failed_links = []
-    for i, link in enumerate(links):
+    depth_count = 0
+    output_count = 0
+    for link in links:
         link_html = request(link)
         link_contents = strip_text(link_html)
+        
+        # checl whether we could even see this policy
         if link_contents == "":
             domain_failed_links.append(link)
-            retobj.add_link(link, 0.0, "N/A", "N/A", False, False)
+            retobj.add_link(link, 0.0, "N/A", "N/A", False, False, False)
             continue    # policy is empty, skip this whole thing
+        
+        # add links on this page to the list to be visited if they are new
+        if depth_count < max_crawler_depth:
+            depth_count += 1
+            new_links = find_policy_links(full_url, link_html)
+            for l in new_links:
+                if l not in links:
+                    links.append(l)
+        
+        # get similarity score, check against the score threshold to see if policy
         sim_score = verify(link_contents, ground_truth)
         is_policy = sim_score >= cos_sim_threshold
+
+        # if this page is a policy, check duplicate then write out to file
         if is_policy:
+            if is_duplicate_policy(link_contents, link):
+                retobj.add_link(link, 0.0, "N/A", "N/A", True, True, True)
+                continue    # we've already seen this policy, skip
             domain_successful_links.append(link)
-            html_outfile = output_folder + domain + "_" + str(i) + ".html"
+            output_count += 1
+            html_outfile = output_folder + domain + "_" + str(output_count) + ".html"
             with open(html_outfile, "a") as fp:
                 fp.write(link_contents)
-            stripped_outfile = output_folder + domain + "_" + str(i) + ".txt"
+            stripped_outfile = output_folder + domain + "_" + str(output_count) + ".txt"
             with open(stripped_outfile, "a") as fp:
                 fp.write(link_contents)
-            retobj.add_link(link, sim_score, html_outfile, stripped_outfile, True, True)
+            retobj.add_link(link, sim_score, html_outfile, stripped_outfile, True, True, False)
+        
+        # this isn't a policy, so just add it to the stats and continue
         else:
+            if is_duplicate_policy(link_contents, link):
+                retobj.add_link(link, 0.0, "N/A", "N/A", True, False, True)
+                continue    # we've already seen this policy, skip
             domain_failed_links.append(link)
-            retobj.add_link(link, sim_score, "N/A", "N/A", True, False)
+            retobj.add_link(link, sim_score, "N/A", "N/A", True, False, False)
     
     # check whether at least one link in the domain was successful
     successful_links.extend(domain_successful_links)
@@ -291,9 +334,12 @@ def produce_summary(all_links):
                 sim_score = str(round(link.sim_score, 2))
                 if link.access_success == False:
                     summary_string += ("=> (NO_ACCESS) " + link.link + " -> ")
+                elif link.duplicate == True:
+                    summary_string += ("=> (DUPLICATE) " + link.link + " -> ")
                 else:
                     summary_string += ("=> (" + sim_score + ") " + link.link + " -> ")
-            summary_string += (link.html_outfile + " & " + link.stripped_outfile + "\n\n")
+                summary_string += (link.html_outfile + " & " + link.stripped_outfile + "\n")
+            summary_string += "\n"
     return summary_string
 
 def start_process(i):
@@ -315,14 +361,17 @@ if __name__ == '__main__':
     argparse.add_argument(  "cos_sim_threshold",
                             type=float,
                             help="minimum cosine similarity between html contents and ground truth vector to be considered a policy.")
+    argparse.add_argument(  "max_crawler_depth",
+                            type = int,
+                            help="number of layers to repeat find_policy_links for each domain.")
     argparse.add_argument(  "output_folder",
                             help="directory to dump output of crawler.")
     args = argparse.parse_args()
     domain_list_file = args.domain_list_file
     ground_truth_html_dir = args.ground_truth_html_dir
     cos_sim_threshold = args.cos_sim_threshold
+    max_crawler_depth = args.max_crawler_depth
     output_folder = args.output_folder
-
     # get domain list and verification ground truth
     with open(domain_list_file, "r") as fp:
         domain_list = json.load(fp).values()
@@ -330,13 +379,14 @@ if __name__ == '__main__':
 
     # set up shared resources for subprocesses
     index = Value('i',0)        # shared val, index of current crawled domain
-    list_manager = Manager()    # manages lists shared among child processes  
-    successful_links = list_manager.list()       # links that contain valid policies
-    failed_links = list_manager.list()           # either couldn't parse or couldn't visit link
-    successful_domains = list_manager.list()     # at least one link in each domain is a valid policy
-    no_link_domains = list_manager.list()        # domains with no links
-    failed_link_domains = list_manager.list()    # domains with no valid links
-    failed_access_domains = list_manager.list()  # domains where the initial access failed
+    shared_manager = Manager()    # manages lists shared among child processes  
+    successful_links = shared_manager.list()       # links that contain valid policies
+    failed_links = shared_manager.list()           # either couldn't parse or couldn't visit link
+    successful_domains = shared_manager.list()     # at least one link in each domain is a valid policy
+    no_link_domains = shared_manager.list()        # domains with no links
+    failed_link_domains = shared_manager.list()    # domains with no valid links
+    failed_access_domains = shared_manager.list()  # domains where the initial access failed
+    policy_dict = shared_manager.dict()            # hashmap of all texts to quickly detect duplicates
 
     # start process pool
     pool_size = cpu_count() * 2
@@ -356,3 +406,4 @@ if __name__ == '__main__':
         fp.write(produce_summary(all_links))
     # might want to add more summary files later
     print("Done")
+    # print(policy_dict)

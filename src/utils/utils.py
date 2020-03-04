@@ -1,14 +1,11 @@
-# Instantiate Chrome Driver
-# options = Options()
-# options.headless = True
-# driver = webdriver.Chrome(options=options)
-# from selenium import webdriver
-# from selenium.webdriver.chrome.options import Options
-import requests
+import os, requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
-def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+def print_progress_bar (iteration, total, prefix = "", suffix = "", decimals = 1, length = 100, fill = "█", printEnd = "\r"):
     """
     Call in a loop to create terminal progress bar
+    https://stackoverflow.com/a/34325723
     @params:
         iteration   - Required  : current iteration (Int)
         total       - Required  : total iterations (Int)
@@ -21,67 +18,44 @@ def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1
     """
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = printEnd)
-    # Print New Line on Complete
-    if iteration == total: 
+    bar = fill * filledLength + "-" * (length - filledLength)
+    print("\r%s |%s| %s%% %s" % (prefix, bar, percent, suffix), end = printEnd)
+    if iteration == total:  # Print New Line on Complete
         print()
 
-def loadDictionary():
-    dictionaryFile = open('../utils/dictionary.txt')
-    ENGLISH_WORDS = {}
-    for word in dictionaryFile.read().split('\n'):
-        ENGLISH_WORDS[word] = None
-        dictionaryFile.close()
-    return ENGLISH_WORDS
-
-def getEnglishCount(html_contents):
-    ENGLISH_WORDS = loadDictionary()
-    html_contents = html_contents.upper()
-    html_contents = removeNonLetters(html_contents)
-    possibleWords = html_contents.split()
-    if possibleWords == []:
-        return 0.0 # no words at all, so return 0.0
-    matches = 0
-    for word in possibleWords:
-        if word in ENGLISH_WORDS:
-            matches += 1
-    return float(matches) / len(possibleWords)
-
-def removeNonLetters(html_contents):
-    UPPERLETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    LETTERS_AND_SPACE = UPPERLETTERS + UPPERLETTERS.lower() + ' \t\n'
-    lettersOnly = []
-    for symbol in html_contents:
-        if symbol in LETTERS_AND_SPACE:
-            lettersOnly.append(symbol)
-    return "".join(lettersOnly)
-
-def isEnglish(html_contents, wordPercentage=50, charPercentage=85):
+def mkdir_clean(dir_path):
     """
-    Some policies in the crawl won't be english-language because
-    privacy policies are often written in multiple languages.  None
-    of those should have a high similarity score, but this method of
-    flagging foreign language documents is faster than the full cosine
-    similarity score, so remove these first.  By default, 50% of the
-    words in the document should be in the english dictionary, and 85%
-    of the characters should be letters rather than numbers or symbols.
+    Given the name of the directory, create new fresh directories using this
+    name. This may require deletion of all contents that previously existed in
+    this directory, or creating a previously nonexistant directory.
 
-    In:     string representaiton of the text to be verified as english
-    Out:    boolean of whether the text is mostly english
+    In:     dir_path - the name of the directory
+    Out:    n/a
     """
-    wordsMatch = getEnglishCount(html_contents) * 100 >= wordPercentage
-    numLetters = len(removeNonLetters(html_contents))
-    if len(html_contents) == 0:
-        html_contentsLettersPercentage = 0
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
     else:
-        html_contentsLettersPercentage = float(numLetters) / len(html_contents) * 100
-    lettersMatch = html_contentsLettersPercentage >= charPercentage
-    return wordsMatch and lettersMatch
+        for f in os.listdir(dir_path):
+            os.remove(os.path.join(dir_path, f))
 
-def request(url):
+
+def start_selenium():
     """
-    Makes a simple HTTP request to the specified url, and returns its contents
+    Instatiate a selenium Chrome webdriver, return it.
+
+    In:     n/a
+    Out:    selenium headless webdriver
+    """
+    options = Options()
+    options.headless = True
+    driver = webdriver.Chrome(options=options)
+    return driver
+
+def request(url, driver):
+    """
+    Makes a simple HTTP request to the specified url and returns its
+    contents. Note: the webdriver is started and closed in the file
+    importing this function.
 
     In:     url - destination of http request
             driver - the web driver object used for headless browsers
@@ -108,12 +82,17 @@ def request(url):
             "Accept-Language": accept_language,
             "Accept-Encoding": accept_encoding
         }
-        r = requests.get(url, headers=headers)
-        if not r:
-            return ""
-        # if "forbes" in url:
-            # print(r.content)
+        requests_res = requests.get(url, headers=headers)
+        if not requests_res:
+            print("requests failed for " + url + " -> trying selenium")
+            selenium_res = ""
+            try:
+                driver.get(url)
+                selenium_res = driver.page_source
+            except Exception as e:
+                print("selenium failed " + str(e))
+            return selenium_res
     except (exceptions) as e:
         print("REQUEST PROBLEM: " + e)
         return ""
-    return r.text
+    return requests_res.text

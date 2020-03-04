@@ -8,15 +8,11 @@ lists (<ul> and <ol>), and links (<a>), and dumps each into separate files.
 Preserves document structure and traceability in sentence outputs.
 """
 
-from bs4 import BeautifulSoup, Comment, NavigableString, CData, Tag, ProcessingInstruction
-import sys, os, time, datetime, re, nltk, csv
+from bs4 import BeautifulSoup, Comment, NavigableString
+import argparse, csv, datetime, matplotlib, matplotlib.pyplot as plt, nltk, os, re, signal, sys, time
+from multiprocessing import Pool, Lock, Value, cpu_count
 from nltk.tokenize import sent_tokenize
-import matplotlib
-import matplotlib.pyplot as plt
-from multiprocessing import Pool, Lock, Value, cpu_count, current_process
-import signal
-sys.path.insert(0, '../utils/')
-from utils import print_progress_bar
+from utils.utils import mkdir_clean, print_progress_bar
 
 pattern_header = re.compile("h\d")
 pattern_list = re.compile("[u|o]l")
@@ -119,7 +115,7 @@ def write_tag_list_to_csv(parser, l, output_file):
             parser.seq_list[seq_index].content_string)
         tag_list.append(tag_tuple)
 
-    with open(output_file,'w') as fp:
+    with open(output_file,"w") as fp:
         csv_writer = csv.writer(fp)
         csv_writer.writerow(headings)
         csv_writer.writerows(tag_list)
@@ -145,8 +141,8 @@ def walk_tree(soup, parser):
 
         if element_name == "p":
             text = element.get_text().strip() + "\n"
-            # if '\n' in text.strip():
-            #     # text = text.replace('\n', '').replace('\r', '').replace('                ', '')
+            # if "\n" in text.strip():
+            #     # text = text.replace("\n", "").replace("\r", "").replace("                ", "")
             #     text = " ".join(text.split())
             #     print(text)
             #     print("detected weird newline")
@@ -165,11 +161,11 @@ def walk_tree(soup, parser):
             # probably a list prefix.
             if len(parser.seq_list) > 0:
                 prev_element = parser.seq_list[-1].content_string.strip()
-                if prev_element.endswith(':'):
-                    text = sent_tokenize(prev_element)[-1] + '\n'
-                    parser.seq_list[-1].content_string = parser.seq_list[-1].content_string.replace(text.strip(), '')
-                    if parser.seq_list[-1].content_string.strip() == '':
-                        parser.seq_list[-1].content_string = '<META: This element identified as list prefix -- moved to content string of that list./META>'
+                if prev_element.endswith(":"):
+                    text = sent_tokenize(prev_element)[-1] + "\n"
+                    parser.seq_list[-1].content_string = parser.seq_list[-1].content_string.replace(text.strip(), "")
+                    if parser.seq_list[-1].content_string.strip() == "":
+                        parser.seq_list[-1].content_string = "<META: This element identified as list prefix -- moved to content string of that list./META>"
             for descendant in element.children:
                 if skip_tag(descendant):
                     continue
@@ -224,46 +220,48 @@ def generate_rule_hist_figs(policy_sentence_stats, num_files):
     of every sentence parsing rule and presents them as a single image.
     """
     rule_dict_list = [rule_dict for rule_dict,fname in policy_sentence_stats]
+
+    if num_files < 1: num_files = 1
     
     fig = plt.figure(figsize=(20,10))
 
-    result = [d['SHORT'] for d in rule_dict_list]
+    result = [d["SHORT"] for d in rule_dict_list]
     short_fig = fig.add_subplot(321)
-    short_fig.set_xlabel('SHORT Rule Hit Count')
-    short_fig.set_ylabel('Number of Policies')
+    short_fig.set_xlabel("SHORT Rule Hit Count")
+    short_fig.set_ylabel("Number of Policies")
     short_fig.hist(result, num_files)
 
-    result = [d['LONG'] for d in rule_dict_list]
+    result = [d["LONG"] for d in rule_dict_list]
     long_fig = fig.add_subplot(322)
-    long_fig.set_xlabel('LONG Rule Hit Count')
-    long_fig.set_ylabel('Number of Policies')
+    long_fig.set_xlabel("LONG Rule Hit Count")
+    long_fig.set_ylabel("Number of Policies")
     long_fig.hist(result, num_files)
 
-    result = [d['START_CAP'] for d in rule_dict_list]
+    result = [d["START_CAP"] for d in rule_dict_list]
     start_fig = fig.add_subplot(323)
-    start_fig.set_xlabel('START_CAP Rule Hit Count')
-    start_fig.set_ylabel('Number of Policies')
+    start_fig.set_xlabel("START_CAP Rule Hit Count")
+    start_fig.set_ylabel("Number of Policies")
     start_fig.hist(result, num_files)
 
-    result = [d['END_PUNC'] for d in rule_dict_list]
+    result = [d["END_PUNC"] for d in rule_dict_list]
     end_fig = fig.add_subplot(324)
-    end_fig.set_xlabel('END_PUNC Rule Hit Count')
-    end_fig.set_ylabel('Number of Policies')
+    end_fig.set_xlabel("END_PUNC Rule Hit Count")
+    end_fig.set_ylabel("Number of Policies")
     end_fig.hist(result, num_files)
 
-    result = [d['PRE_NOISE'] for d in rule_dict_list]
+    result = [d["PRE_NOISE"] for d in rule_dict_list]
     pre_fig = fig.add_subplot(325)
-    pre_fig.set_xlabel('PRE_NOISE Rule Hit Count')
-    pre_fig.set_ylabel('Number of Policies')
+    pre_fig.set_xlabel("PRE_NOISE Rule Hit Count")
+    pre_fig.set_ylabel("Number of Policies")
     pre_fig.hist(result, num_files)
 
-    result = [d['HEAD_FRAG'] for d in rule_dict_list]
+    result = [d["HEAD_FRAG"] for d in rule_dict_list]
     head_fig = fig.add_subplot(326)
-    head_fig.set_xlabel('HEAD_FRAG Rule Hit Count')
-    head_fig.set_ylabel('Number of Policies')
+    head_fig.set_xlabel("HEAD_FRAG Rule Hit Count")
+    head_fig.set_ylabel("Number of Policies")
     head_fig.hist(result, num_files)
 
-    outfile_rule_hists = output_folder + 'rule_hists.png'
+    outfile_rule_hists = tokenizer_output_folder + "rule_hists.png"
     fig.tight_layout()
     fig.savefig(outfile_rule_hists)
 
@@ -284,7 +282,7 @@ def apply_sentence_rules(parser, sentence):
         parser.rule_vals["START_CAP"] += 1
         rule_hits.append("START_CAP")
     if not pattern_sentence_end_punc.search(sentence):
-        # usually the beginning of a list (and ends with ':')
+        # usually the beginning of a list (and ends with ":"")
         parser.rule_vals["END_PUNC"] += 1
         rule_hits.append("END_PUNC")
     if pattern_prefix_noise.match(sentence):
@@ -323,7 +321,7 @@ def extract_sentences(parser, outfile_sentences, outfile_rule_bar):
             bar graph showing numbers of rule hits on sentences in policy
     """
     parser.rule_vals.update({rule:0 for rule in parser.rule_vals})
-    processed_tags = ['p','h']
+    processed_tags = ["p","h"]
     sentences_list = []
 
     # loop through sequential list to build sentences/tuple list
@@ -332,18 +330,18 @@ def extract_sentences(parser, outfile_sentences, outfile_rule_bar):
             sentences = sent_tokenize(element.content_string)
             for j, sentence in enumerate(sentences, start=0):
                 rule_hits = apply_sentence_rules(parser, sentence)
-                sentence_tuple = (i, element.tag_type, element.tag_index, j, sentence, '-'.join(map(str, rule_hits)))
+                sentence_tuple = (i, element.tag_type, element.tag_index, j, sentence, "-".join(map(str, rule_hits)))
                 sentences_list.append(sentence_tuple)
 
     # write all sentences to single csv file
     headings = ("Sequential Index","Tag Type", "Tag Index", "Sentence Index in Tag", "Sentence Text", "Rule Hits")
-    with open(outfile_sentences,'w') as fp:
+    with open(outfile_sentences,"w") as fp:
         csv_writer = csv.writer(fp)
         csv_writer.writerow(headings)
         csv_writer.writerows(sentences_list)
 
     # create bar graphs of policy's sentence rule hits
-    plt.bar(range(len(parser.rule_vals)), list(parser.rule_vals.values()), align='center')
+    plt.bar(range(len(parser.rule_vals)), list(parser.rule_vals.values()), align="center")
     plt.xticks(range(len(parser.rule_vals)), list(parser.rule_vals.keys()), rotation=30, fontsize=8)
     plt.ylabel("# of Sentences in Policy")
     plt.savefig(outfile_rule_bar)
@@ -363,16 +361,16 @@ def process_policy(fname):
         return None
 
     # build all the output files
-    outfile_sequential = output_folder + fname[:-5] + timestamp + '_sequential.txt'
-    outfile_sentences = output_folder + fname[:-5] + timestamp + '_sentences.csv'
-    outfile_paragraphs = output_folder + fname[:-5] + timestamp + '_paragraphs.csv'
-    outfile_headers = output_folder + fname[:-5] + timestamp + '_headers.csv'
-    outfile_lists = output_folder + fname[:-5] + timestamp + '_lists.csv'
-    outfile_compare = output_folder + fname[:-5] + timestamp + '_compare.txt'
-    outfile_rule_bar = output_folder + fname[:-5] + timestamp + '_rule_bar.png'
+    outfile_sequential = parser_output_folder + fname[:-5] + timestamp + "_sequential.txt"
+    outfile_paragraphs = parser_output_folder + fname[:-5] + timestamp + "_paragraphs.csv"
+    outfile_headers = parser_output_folder + fname[:-5] + timestamp + "_headers.csv"
+    outfile_lists = parser_output_folder + fname[:-5] + timestamp + "_lists.csv"
+    outfile_compare = parser_output_folder + fname[:-5] + timestamp + "_compare.txt"
+    outfile_rule_bar = tokenizer_output_folder + fname[:-5] + timestamp + "_rule_bar.png"
+    outfile_sentences = tokenizer_output_folder + fname[:-5] + timestamp + "_sentences.csv"
 
     # walk tree to parse all the beautiful soup tags and build comparison text
-    soup = BeautifulSoup(html_contents, 'html.parser')
+    soup = BeautifulSoup(html_contents, "html.parser")
     parser = ParserData()
     walk_tree(soup, parser)
 
@@ -387,14 +385,14 @@ def process_policy(fname):
     # go through entire sequential list to build sequential file
     out_string = ""
     for element in parser.seq_list:
-        out_string = out_string + element.tag_type + str(element.tag_index) + '\n' + element.content_string + "\n"
+        out_string = out_string + element.tag_type + str(element.tag_index) + "\n" + element.content_string + "\n"
     with open(outfile_sequential, "a") as fp:
         fp.write(out_string)
 
     # Update progress bar
     with index.get_lock():
         index.value += 1
-        print_progress_bar(index.value, len(files), prefix = 'Parsing Progress:', suffix = 'Complete', length = 50)
+        print_progress_bar(index.value, len(files), prefix = "Parsing-Tokenizing Progress:", suffix = "Complete", length = 50)
 
     # Decide whether the parsing was successful
     remaining_sentences = compare_parsed_text(parser.seq_list,auto_stripped_text)
@@ -406,7 +404,7 @@ def process_policy(fname):
             num_failed_policies.value += 1
             with open(outfile_compare, "a") as fp:
                 fp.write("\n\n".join(remaining_sentences) + "\n")
-            with open("err.txt", "a") as fp:
+            with open(parser_output_folder + "err.txt", "a") as fp:
                 fp.write(fname[:-5] + " has " + str(len(remaining_sentences)) + " left.\n")
         finally:
             lock.release()
@@ -416,7 +414,7 @@ def process_policy(fname):
         extract_sentences(parser, outfile_sentences, outfile_rule_bar)
         lock.acquire()
         try:
-            with open("success.txt", "a") as fp:
+            with open(parser_output_folder + "success.txt", "a") as fp:
                 fp.write(fname[:-5] + " has " + str(parser.rule_vals["GOOD"]) + " good sentences.\n")
         finally:
             lock.release()
@@ -428,25 +426,34 @@ def start_process(i, failed):
     Ignore SIGINT in child workers, will be handled to enable restart.
     """
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    # print('Starting', current_process().name)
     global index, num_failed_policies
     index = i
     num_failed_policies = failed
 
 if __name__ == '__main__':
-    dataset_html = "../../data/policies/html/"
-    dataset_text = "../../data/policies/text_redo/"
-    output_folder = "./output/"
-    timestamp = '_{0:%Y%m%d-%H%M%S}'.format(datetime.datetime.now())
-    parse_index = Value('i',0)          # shared val, index of current parsed file
-    num_failed_policies = Value('i',0)  # shared val, number of policies on which parsing failed at some point
+    argparse = argparse.ArgumentParser(description="Parse input HTML documents and tokenize sentences from each policy.")
+    argparse.add_argument(  "dataset_html",
+                            help="input dataset of HTML documents to parse and tokenize.")
+    argparse.add_argument(  "dataset_text",
+                            help="input dataset of text documents scraped from each HTML document.")
+    argparse.add_argument(  "parser_output_folder",
+                            help="directory to dump outputs from the parser (paragraph/header/sequential.csv files, etc.).")
+    argparse.add_argument(  "tokenizer_output_folder",
+                            help="directory to dump outputs from the tokenizer (sentences.csv, statistics, etc.")
+    args = argparse.parse_args()
+    dataset_html = args.dataset_html
+    dataset_text = args.dataset_text
+    parser_output_folder = args.parser_output_folder
+    tokenizer_output_folder = args.tokenizer_output_folder
+    mkdir_clean(parser_output_folder)
+    mkdir_clean(tokenizer_output_folder)
+    timestamp = "_{0:%Y%m%d-%H%M%S}".format(datetime.datetime.now())
+    parse_index = Value("i",0)          # shared val, index of current parsed file
+    num_failed_policies = Value("i",0)  # shared val, number of policies on which parsing failed at some point
 
-    # use this for a selection of 500 random files
-    # files = [line.rstrip('\n') for line in open("./rand_files.txt")]
     # use this for the entire dataset
     files = [name for name in os.listdir(dataset_html) if os.path.isfile(os.path.join(dataset_html, name))]
     total_files = len(files)
-    print("got files, start pool")
     
     # Use Multithreading pool because the pool will automatically avoid
     # the chunking idle-process problem where one chunk needs less time
@@ -457,7 +464,7 @@ if __name__ == '__main__':
     # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Value
     # https://stackoverflow.com/questions/44774853/exit-multiprocesses-gracefully-in-python3
     pool_size = cpu_count() * 2
-    matplotlib.use('agg')   # don't know why this works, but allows matplotlib to execute in child procs
+    matplotlib.use("agg")   # don't know why this works, but allows matplotlib to execute in child procs
     pool = Pool(
         processes=pool_size,
         initializer=start_process,
@@ -474,4 +481,5 @@ if __name__ == '__main__':
     print("Generating last rule histogram...")
     generate_rule_hist_figs(policy_sentence_stats, num_successful_policies)
 
-    print("Successfully parsed " + str((num_successful_policies / total_files) * 100) + "% of the " + str(total_files) + " files.")
+    print("Successfully parsed " + str(round((num_successful_policies / total_files) * 100, 2)) + "% of the " + str(total_files) + " files.")
+    print("Done")

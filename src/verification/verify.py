@@ -9,24 +9,71 @@ cosine similarity from ground truth using TfidfVectorizer.
 Currently seems like ~60% is the cutoff.
 """
 
-import os, re, signal, matplotlib
-import pandas as pd
-from multiprocessing import Pool, Lock, Value, cpu_count, current_process
+import argparse, datetime, matplotlib, os, pandas as pd, re, signal
+from multiprocessing import Pool, Value, cpu_count, Manager
 import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
-from nltk.corpus import stopwords
-from nltk.stem.porter import PorterStemmer
-from nltk.tokenize import RegexpTokenizer
-from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-sys.path.insert(0, '../utils/')
-from utils import isEnglish, print_progress_bar, request
+from utils.utils import mkdir_clean, print_progress_bar, request
+
+def load_dictionary(dictionary):
+    dictionaryFile = open(dictionary)
+    ENGLISH_WORDS = {}
+    for word in dictionaryFile.read().split("\n"):
+        ENGLISH_WORDS[word] = None
+        dictionaryFile.close()
+    return ENGLISH_WORDS
+
+def get_english_count(dictionary, html_contents):
+    ENGLISH_WORDS = load_dictionary(dictionary)
+    html_contents = html_contents.upper()
+    html_contents = remove_nonletters(html_contents)
+    possibleWords = html_contents.split()
+    if possibleWords == []:
+        return 0.0 # no words at all, so return 0.0
+    matches = 0
+    for word in possibleWords:
+        if word in ENGLISH_WORDS:
+            matches += 1
+    return float(matches) / len(possibleWords)
+
+def remove_nonletters(html_contents):
+    UPPERLETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    LETTERS_AND_SPACE = UPPERLETTERS + UPPERLETTERS.lower() + " \t\n"
+    lettersOnly = []
+    for symbol in html_contents:
+        if symbol in LETTERS_AND_SPACE:
+            lettersOnly.append(symbol)
+    return "".join(lettersOnly)
+
+def is_english(dictionary, html_contents, wordPercentage=50, charPercentage=85):
+    """
+    Some policies in the crawl won't be english-language because
+    privacy policies are often written in multiple languages.  None
+    of those should have a high similarity score, but this method of
+    flagging foreign language documents is faster than the full cosine
+    similarity score, so remove these first.  By default, 50% of the
+    words in the document should be in the english dictionary, and 85%
+    of the characters should be letters rather than numbers or symbols.
+
+    In:     string representaiton of the text to be verified as english
+    Out:    boolean of whether the text is mostly english
+    """
+    wordsMatch = get_english_count(dictionary, html_contents) * 100 >= wordPercentage
+    numLetters = len(remove_nonletters(html_contents))
+    if len(html_contents) == 0:
+        html_contentsLettersPercentage = 0
+    else:
+        html_contentsLettersPercentage = float(numLetters) / len(html_contents) * 100
+    lettersMatch = html_contentsLettersPercentage >= charPercentage
+    return wordsMatch and lettersMatch
 
 def strip_text(html):
     """
     This function takes in a html document represented as a string and
-    removes all tags known to be irrelevant to the policy text.
+    removes all tags known to be irrelevant to the policy text, then
+    returns all the visible text elements in a single string.
 
     In:     string containing html document bytes
     Out:    string containing text of visible policy text
@@ -77,31 +124,20 @@ def get_ground_truth(ground_truth_html_dir):
         ground_truth += html_contents
     return ground_truth
 
-def clean_text(text):
+def is_duplicate_policy(link_contents, domain, policy_dict):
     """
-    This function removes unnecessary characters and lemmatizes the corpus
-    In:     l - list with privacy policy
-            col_name - the desired column name of the output dataframe
-    Out:    pandas dataframe of cleaned privacy policy
+    Since the crawler does its work automatically, it is not immune
+    to gathering duplicate policies (sometimes from different initial
+    sources). This function will compare the current policy with the
+    previously verified policies to see if it is a duplicate.
     """
-    l2 = []
-    stop_words = set(stopwords.words("english"))
-    # for i in l:
-    # Removal of unnecessary characters
-    text = re.sub("[^a-zA-Z]", " ", text)  # Remove punctuations
-    text = text.lower()  # Convert to lowercase
-    text = re.sub("&lt;/?.*?&gt;"," &lt;&gt; ", text)  # Remove <> tags
-    text = re.sub("(\\d|\\W)+"," ",text)  # Remove special characters and digits
-    # text = text.split()  # Convert to list from string
-
-    # Lemmatization
-    # lem = WordNetLemmatizer()  # Lemmatizer
-    # text = [lem.lemmatize(word) for word in text if not word in stop_words]
-    # text = " ".join(text)
-    # l2.append(text)
-
-    # Place the l2 back into a dataframe
-    return text
+    # digest = md5(link_contents.encode())
+    # digest = digest.hexdigest()
+    if link_contents in policy_dict:
+        return True
+    else:
+        policy_dict[link_contents] = domain
+        return False
 
 def verify(policy, ground_truth):
     """
@@ -124,9 +160,13 @@ def verify(policy, ground_truth):
     html_contents = remove_company_names(strip_text(html_contents), policy[:-5]) + " "
     
     # verify majority of the contents are english-language, discard if not
-    if not isEnglish(html_contents):
-        print(policy + " is not english")
+    if not is_english(dictionary, html_contents):
+        # print(policy + " is not english")
         return 0
+
+    if is_duplicate_policy(html_contents, policy, policy_dict):
+        # print("this is a duplicate policy")
+        return -2
     
     # Create the Document Term Matrix and pandas dataframe
     # https://www.machinelearningplus.com/nlp/cosine-similarity/
@@ -136,31 +176,18 @@ def verify(policy, ground_truth):
     doc_term_matrix = sparse_matrix.todense()
     df = pd.DataFrame(doc_term_matrix, 
             columns=vectorizer.get_feature_names(),
-            index=['ground_truth', 'corp'])
+            index=["ground_truth", "corp"])
 
     # calculate cosine similarity of the ground truth and the policy
     # sim[0,1] is the value we actually care about
     sim = cosine_similarity(df, df)
-    if sim[0,1] > 0.5 and sim[0,1] < 0.6:
-        print(policy + " score = " + str(sim[0,1]))
     
     # Update progress bar
     with index.get_lock():
         index.value += 1
-        print_progress_bar(index.value, len(files), prefix = 'Parsing Progress:', suffix = 'Complete', length = 50)
+        print_progress_bar(index.value, len(files), prefix = "Verification Progress:", suffix = "Complete", length = 50)
 
     return sim[0,1]
-
-def detect_duplicates():
-    """
-    Since the crawler does its work automatically, it is not immune
-    to gathering duplicate policies (sometimes from different initial
-    sources). This function will compare the current policy with the
-    previously verified policies to see if it is a duplicate.
-
-    NOTE: NEED TO FIGURE OUT HOW TO WRITE THIS.  HASH TABLE WOULD BE
-    USEFUL IF WE COULD GUARANTEE THAT THE TEXT WOULD BE EXACTLY THE SAME...
-    """
 
 def start_process(i):
     """
@@ -172,13 +199,33 @@ def start_process(i):
     index = i
 
 if __name__ == '__main__':
-    ground_truth_html_dir = "./ground_truth_html/"
-    policies_html_dir = "../../data/policies/html/"
-    test_set = "./test_set/"
+    timestamp = "_{0:%Y%m%d-%H%M%S}".format(datetime.datetime.now())
+    argparse = argparse.ArgumentParser(description="Verify whether or not input HTML documents are privacy policies.")
+    argparse.add_argument(  "cos_sim_threshold",
+                            type=float,
+                            help="minimum cosine similarity between html contents and ground truth vector to be considered a policy.")
+    argparse.add_argument(  "ground_truth_html_dir",
+                            help="directory containing html files of verification ground truth vector.")
+    argparse.add_argument(  "dictionary",
+                            help="txt file containing english-language dictionary.")
+    argparse.add_argument(  "policies_html_dir",
+                            help="directory containing html files to verify.")
+    argparse.add_argument(  "-o", "--output_folder",
+                            default="./verification_output" + timestamp + "/",
+                            required=False,
+                            help="directory to dump verification output.  Will be created if does not exist.")
+    args = argparse.parse_args()
+    cos_sim_threshold = args.cos_sim_threshold
+    ground_truth_html_dir = args.ground_truth_html_dir
+    dictionary = args.dictionary
+    policies_html_dir = args.policies_html_dir
+    output_folder = args.output_folder
 
     # get ground truth in one string
     ground_truth = get_ground_truth(ground_truth_html_dir)
     files = [f for f in os.listdir(policies_html_dir) if os.path.isfile(os.path.join(policies_html_dir, f))]
+    shared_manager = Manager()          # manages lists shared among child processes  
+    policy_dict = shared_manager.dict() # hashmap of all texts to quickly detect duplicates
     
     index = Value("i",0)          # shared val, index of current parsed file
     pool_size = cpu_count() * 2
@@ -192,12 +239,38 @@ if __name__ == '__main__':
     pool.close()  # no more tasks
     pool.join()   # merge all child processes
 
-    # plt.hist(sim_list, len(sim_list))
-    # plt.title('Similarity Scores')
-    # plt.show()
+    # Generate full similarity list & borderline similarity list
+    print("Generating full similarity list & borderline similarity list...")
+    mkdir_clean(output_folder)
+    files_sim_list = [(files[i], sim_list[i]) for i in range(0, len(files))]
+    full_output_string = ""
+    borderline_output_string = ""
+    for file, score in files_sim_list:
+        if score > (cos_sim_threshold - 0.05) and score < (cos_sim_threshold + 0.05):
+            borderline_output_string += file + "score = " + str(round(score, 2)) + "\n"
+        full_output_string += file + "score = " + str(round(score, 2)) + "\n"
+    with open(output_folder + "borderline_scores.txt" ,"w") as fp:
+        fp.write(borderline_output_string)
+    with open(output_folder + "all_scores.txt" ,"w") as fp:
+        fp.write(full_output_string)
 
-    fig = plt.figure(1, figsize=(9, 6))
-    ax = fig.add_subplot(111)
-    bp = ax.boxplot(sim_list)
-    fig.savefig("boxplot.png", bbox_inches="tight")
+    # Generate histogram and boxplot of verification
+    # https://matplotlib.org/3.1.3/api/_as_gen/matplotlib.pyplot.subplot.html
+    # https://matplotlib.org/3.1.1/tutorials/intermediate/tight_layout_guide.html
+    print("Generating histogram and boxplot of verification...")
+    fig = plt.figure()
+    hist = fig.add_subplot(121)
+    hist.set_title("Cosine Similarity Score Histogram")
+    hist.set_xlabel("Cosine Similarity Score")
+    hist.set_ylabel("Number of Policies per Score")
+    hist.hist(sim_list, len(sim_list))
+    box = fig.add_subplot(122)
+    box.set_title("Cosine Similarity Score Boxplot")
+    box.set_xlabel("")
+    box.set_ylabel("Cosine Similarity Score")
+    box.boxplot(sim_list)
+    fig.tight_layout()
+    fig.savefig(output_folder + "visualization.png")
+
+    print("Done")
         

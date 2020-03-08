@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 """
 Privacy Policy Project
 Web Crawler
@@ -16,23 +14,10 @@ from bs4 import BeautifulSoup
 from multiprocessing import Pool, Value, cpu_count, current_process, Manager
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from utils.utils import print_progress_bar, request, start_selenium
+from utils.utils import print_progress_bar, request, start_selenium, VerifyJsonExtension
 from verification.verify import get_ground_truth, is_duplicate_policy, is_english, mkdir_clean, strip_text
 
 PRIVACY_POLICY_KEYWORDS = ["privacy"]
-
-class VerifyJsonExtension(argparse.Action):
-    """
-    Checks the input domain list file that it is actually a file with
-    the .json extension.  Doesn't check to see if the file contains
-    json content, but was the best we could do for the time being.
-    https://stackoverflow.com/a/15203955
-    """
-    def __call__(self,parser,namespace,fname,option_string=None):
-        if fname.endswith(".json"):
-            setattr(namespace,self.dest,fname)
-        else:
-            parser.error("File doesn't end with '.json'")
 
 class DomainLink():
     def __init__(self, link, sim_score, html_outfile, stripped_outfile, access_success, valid, duplicate):
@@ -296,6 +281,11 @@ def start_process(i):
 
 if __name__ == '__main__':
     argparse = argparse.ArgumentParser(description="Crawls provided domains to gather privacy policy html files.")
+    argparse.add_argument(  "-n", "--num_domains",
+                            type=int,
+                            default=-1,
+                            required=False,
+                            help="number of domains to crawl.  If blank, set to entire input list.")
     argparse.add_argument(  "domain_list_file",
                             help="json file containing list of top N sites to visit.",
                             action=VerifyJsonExtension)
@@ -327,7 +317,9 @@ if __name__ == '__main__':
     summary_outfile = args.html_outfolder + "../summary.txt"
     # get domain list and verification ground truth
     with open(domain_list_file, "r") as fp:
-        domain_list = json.load(fp).values()
+        domain_list = list(json.load(fp).values())
+    if args.num_domains != -1:
+        domain_list = domain_list[:args.num_domains]
     ground_truth = get_ground_truth(ground_truth_html_dir)
 
     # set up shared resources for subprocesses

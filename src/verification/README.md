@@ -15,11 +15,10 @@ every HTML document as well as a more curated list of documents that
 are on the borderline of the threshold you specified.
 
 ## Example Run
-An example run from the top-level directory with a cosine similarity
-threshold of 0.6 is shown below.  Please note that due to the nature of
-Python modules and the way modules are linked in this project, this
-particular command _*must be run from the `src/` directory of this
-repository*_.
+An example run with a cosine similarity threshold of 0.6 is shown below.
+Please note that due to the nature of Python modules and the way modules
+are linked in this project, this particular command _*must be run from
+the `src/` directory of thisrepository*_.
 ```
 python -m verification.verify 0.6 ../data/inputs/ground_truth_html/ ../data/inputs/dictionary.txt ../data/crawler_output/html/
 ```

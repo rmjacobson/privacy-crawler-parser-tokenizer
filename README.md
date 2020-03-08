@@ -7,15 +7,16 @@ project to save headaches.
 
 The top-level scripts for this project's main components (crawler.py
 and parser-tokenizer.py) can be run very simply, as shown in the two
-examples below.
+examples below.  There are also bash scripts containing these examples
+that can be executed from this top-level directory.
 ```
-python crawler.py data/inputs/alexa.json data/inputs/ground_truth_html/ data/inputs/dictionary.txt 0.6 3 data/crawler_output/html/ data/crawler_output/stripped_text/
+python src/crawler.py -n 5 data/inputs/alexa_top_10K.json data/inputs/ground_truth_html/ data/inputs/dictionary.txt 0.6 3 data/crawler_output/html/ data/crawler_output/stripped_text/
 
-python parser-tokenizer.py data/crawler_output/html/ data/crawler_output/stripped_text/ data/parser_output/ data/tokenizer_output/
+python src/parser-tokenizer.py data/crawler_output/html/ data/crawler_output/stripped_text/ data/inputs/rules.json data/parser_output/ data/tokenizer_output/
 ```
 However, due to the limitations of Python's module importing rules,
 some of the associated submodules must be run from inside the `src`
-directory with the commands shown below.  Please read eachmodule's
+directory with the commands shown below.  Please read each module's
 README.md for more information.
 ```
 python -m verification.verify 0.6 ../data/inputs/ground_truth_html/ ../data/inputs/dictionary.txt ../data/crawler_output/html/

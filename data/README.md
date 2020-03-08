@@ -15,7 +15,7 @@ that any files you add to this directory are _actually_ privacy
 policies.  Note that this directory is version controlled, so any
 changes made should be committed if you want them to persist across
 cloning.
-* `alexa.json` is a JSON file containing the Alexa Top-N sites for
+* `alexa.json` is a JSON file containing the Alexa Top-10,000 sites for
 input into the crawler.  This file is not created by this project, but
 is generated through an outside script described below.  Note that the
 user does not have to run the crawler with _all_ top-N sites, but can
@@ -26,6 +26,10 @@ determine whether a given link is mostly english text.  Given that the
 english language changes rather slowly, the dictionary has been
 included in version control to save the user the trouble of finding
 their own.
+* `rules.json` contains rules that help the tokenizer determine what is
+a correct sentence and what is not.  Almost all rules are name-regex
+pairs, but HEAD_FRAG is actually a threshold that is dealt with
+separately.
 
 ## Crawler Output
 `crawler_output` contains all output of the crawler, including HTML

@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 """
 Privacy Policy Project
 verify.py
@@ -78,6 +76,8 @@ def strip_text(html):
     In:     string containing html document bytes
     Out:    string containing text of visible policy text
     """
+    if html == "":
+        return ""
     soup = BeautifulSoup(html, "html.parser")
     
     # Remove all script and style elements
@@ -220,6 +220,7 @@ if __name__ == '__main__':
     dictionary = args.dictionary
     policies_html_dir = args.policies_html_dir
     output_folder = args.output_folder
+    mkdir_clean(output_folder)
 
     # get ground truth in one string
     ground_truth = get_ground_truth(ground_truth_html_dir)
@@ -241,7 +242,6 @@ if __name__ == '__main__':
 
     # Generate full similarity list & borderline similarity list
     print("Generating full similarity list & borderline similarity list...")
-    mkdir_clean(output_folder)
     files_sim_list = [(files[i], sim_list[i]) for i in range(0, len(files))]
     full_output_string = ""
     borderline_output_string = ""

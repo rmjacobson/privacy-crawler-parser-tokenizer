@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 """
 Privacy Policy Project
 HTML Parser
@@ -12,13 +10,8 @@ from bs4 import BeautifulSoup, Comment, NavigableString
 import argparse, csv, datetime, matplotlib, matplotlib.pyplot as plt, nltk, os, re, signal, sys, time
 from multiprocessing import Pool, Lock, Value, cpu_count
 from nltk.tokenize import sent_tokenize
-from utils.utils import mkdir_clean, print_progress_bar
-
-pattern_header = re.compile("h\d")
-pattern_list = re.compile("[u|o]l")
-pattern_prefix_noise = re.compile("^(?:[a-zA-Z0-9]|[-](?=[^-]*$)){1,3}$\:*")
-pattern_uppercase_first = re.compile("[A-Z]")
-pattern_sentence_end_punc = re.compile("[\.?!]$")
+from utils.utils import mkdir_clean, print_progress_bar, VerifyJsonExtension
+from statistics.sentences import apply_sentence_rules, build_rule_dict, generate_rule_bar_fig, generate_rule_hist_figs
 
 class SequentialElement:
     """
@@ -29,35 +22,27 @@ class SequentialElement:
         self.tag_type = tag_type
         self.tag_index = tag_index
 
-
 class ParserData:
     """
     Class for data used during the parsing of a single policy.  This
     data structure is initialized to be empty at start of every
     parsing process.
     """
-    def __init__(self):  
+    def __init__(self, rule_dict):  
         self.seq_list = []
         self.paragraph_list = []
         self.header_list = []
         self.list_list = []
-        self.rule_vals = {
-            "SHORT"     : 0,
-            "LONG"      : 0,
-            "START_CAP" : 0,
-            "END_PUNC"  : 0,
-            "PRE_NOISE" : 0,
-            "HEAD_FRAG" : 0,
-            "META"      : 0,
-            "GOOD"      : 0
-        }
+        self.rule_hits = rule_dict.copy()
+        self.rule_hits = self.rule_hits.fromkeys(self.rule_hits, 0)
+        self.rule_hits["GOOD"] = 0
 
 def skip_tag(element):
     """ Check if given tag is relevant to the parser.
     https://stackoverflow.com/questions/1936466/beautifulsoup-grab-visible-webpage-text
     
-    Param:  element - bs4 tag
-    Return: Boolean: True if tag is irrelevant, False if tag is relevant
+    In:     element - bs4 tag
+    Out:    Boolean: True if tag is irrelevant, False if tag is relevant
     """
     if element.name in ["style", "script", "noscript", "head", "title", "meta", "[document]", "img", "iframe"]:
         # this is an "invisible" tag the reader would not see
@@ -76,8 +61,8 @@ def skip_tag(element):
     # def is_only_links(self, element):
     #     """
     #     Check if passed-in element consists only of hyperlinks.
-    #     Param:  element - bs4 tag
-    #     Return: Boolean - True if element only links, False otherwise
+    #     I     element - bs4 tag
+    #     Out:  Boolean - True if element only links, False otherwise
     #     """
     #     ret = True
     #     children = element.findChildren(recursive=False)
@@ -93,6 +78,10 @@ def write_tag_list_to_csv(parser, l, output_file):
     Every element of tag list is an index of the sequential list
     where the actual tag element information can be found.
     Note: need to be careful of list bounds on the sequential list.
+
+    In:     parser to access sequential list, l to write out, string
+            of output file path.
+    Out:    CSV file corresponding to list.
     """
     tag_list = []
     headings = ("Sequential Index","Tag Index","Preceeded By","Proceeded By","Tag Text")
@@ -125,12 +114,14 @@ def walk_tree(soup, parser):
     theory that only these tags will contain important/visible text.
     https://stackoverflow.com/questions/4814317/depth-first-traversal-on-beautifulsoup-parse-tree
     
-    Param:  soup - bs4 instance of the html parser
-    Return: n/a
+    In:     soup - bs4 instance of the html parser
+    Out:    N/A
     """
     paragraph_index = 0
     header_index = 0
     list_index = 0
+    pattern_header = re.compile("h\d")
+    pattern_list = re.compile("[u|o]l")
 
     for element in soup.find_all(recursive=False):
         if skip_tag(element):
@@ -187,6 +178,9 @@ def compare_parsed_text(seq_list, auto_stripped_text):
     automatically scraped text of the policy to the text we parse here.
     Note: can't match/replace entire elements at a time because of 
     weirdness in how certain things get scraped by bs4.
+
+    In:     sequential list of elements, stripped text of policy HTML doc.
+    Out:    sentence-tokenized version of remaining text.
     """
     for element in seq_list:
         element_segment_list = element.content_string.splitlines()
@@ -196,115 +190,6 @@ def compare_parsed_text(seq_list, auto_stripped_text):
             except ValueError:
                 pass  # do nothing!
     return sent_tokenize(auto_stripped_text)
-
-def is_header_fragment(sentence):
-    """
-    > 60% words start with a capital letter, usually when things
-    # that are usually in <hX> tags are part of <p> tags.
-    """
-    words = sentence.split()
-    ncaps = 0
-    for word in words:
-        caps = [l for l in word if l.isupper()]
-        if len(caps) > 0:
-            ncaps += 1
-    if (ncaps / len(words)) > 0.6:
-        return True
-    else:
-        return False
-
-def generate_rule_hist_figs(policy_sentence_stats, num_files):
-    """
-    Creates aggregate representation of the rule_vals dictionaries
-    collected from every successfully parsed file.  Produces histograms
-    of every sentence parsing rule and presents them as a single image.
-    """
-    rule_dict_list = [rule_dict for rule_dict,fname in policy_sentence_stats]
-
-    if num_files < 1: num_files = 1
-    
-    fig = plt.figure(figsize=(20,10))
-
-    result = [d["SHORT"] for d in rule_dict_list]
-    short_fig = fig.add_subplot(321)
-    short_fig.set_xlabel("SHORT Rule Hit Count")
-    short_fig.set_ylabel("Number of Policies")
-    short_fig.hist(result, num_files)
-
-    result = [d["LONG"] for d in rule_dict_list]
-    long_fig = fig.add_subplot(322)
-    long_fig.set_xlabel("LONG Rule Hit Count")
-    long_fig.set_ylabel("Number of Policies")
-    long_fig.hist(result, num_files)
-
-    result = [d["START_CAP"] for d in rule_dict_list]
-    start_fig = fig.add_subplot(323)
-    start_fig.set_xlabel("START_CAP Rule Hit Count")
-    start_fig.set_ylabel("Number of Policies")
-    start_fig.hist(result, num_files)
-
-    result = [d["END_PUNC"] for d in rule_dict_list]
-    end_fig = fig.add_subplot(324)
-    end_fig.set_xlabel("END_PUNC Rule Hit Count")
-    end_fig.set_ylabel("Number of Policies")
-    end_fig.hist(result, num_files)
-
-    result = [d["PRE_NOISE"] for d in rule_dict_list]
-    pre_fig = fig.add_subplot(325)
-    pre_fig.set_xlabel("PRE_NOISE Rule Hit Count")
-    pre_fig.set_ylabel("Number of Policies")
-    pre_fig.hist(result, num_files)
-
-    result = [d["HEAD_FRAG"] for d in rule_dict_list]
-    head_fig = fig.add_subplot(326)
-    head_fig.set_xlabel("HEAD_FRAG Rule Hit Count")
-    head_fig.set_ylabel("Number of Policies")
-    head_fig.hist(result, num_files)
-
-    outfile_rule_hists = tokenizer_output_folder + "rule_hists.png"
-    fig.tight_layout()
-    fig.savefig(outfile_rule_hists)
-
-def apply_sentence_rules(parser, sentence):
-    num_words = len(sentence.split())
-    rule_hits = []
-    if num_words < 5:
-        # probably due to things like addresses or header fragments
-        parser.rule_vals["SHORT"] += 1
-        rule_hits.append("SHORT")
-    if num_words > 85:
-        # probably a run-on sentence that hasn't been properly parsed
-        parser.rule_vals["LONG"] += 1
-        rule_hits.append("LONG")
-    if not pattern_uppercase_first.match(sentence):
-        # probably due to improperly scraped fragment (like from a div)
-        # might be able to go back to these and re-parse
-        parser.rule_vals["START_CAP"] += 1
-        rule_hits.append("START_CAP")
-    if not pattern_sentence_end_punc.search(sentence):
-        # usually the beginning of a list (and ends with ":"")
-        parser.rule_vals["END_PUNC"] += 1
-        rule_hits.append("END_PUNC")
-    if pattern_prefix_noise.match(sentence):
-        # things like "1. " or "A: " that are more like headings in an outline
-        # might be able to go back to these and re-parse
-        parser.rule_vals["PRE_NOISE"] += 1
-        rule_hits.append("PRE_NOISE")
-    if is_header_fragment(sentence):
-        # > 50% words start with a capital letter, usually when things
-        # that are usually in <hX> tags are part of <p> tags.
-        parser.rule_vals["HEAD_FRAG"] += 1
-        rule_hits.append("HEAD_FRAG")
-    if sentence.startswith("<META: ") and sentence.endswith("/META>"):
-        # these in-string tags used to describe things the parser
-        # does that may affect the content of the sentencs.
-        parser.rule_vals["META"] += 1
-        rule_hits.append("META")
-    if len(rule_hits) == 0:
-        # if none of the above rules are flagged, call the sentence good
-        parser.rule_vals["GOOD"] += 1
-   
-    return rule_hits
 
 def extract_sentences(parser, outfile_sentences, outfile_rule_bar):
     """ 
@@ -316,37 +201,49 @@ def extract_sentences(parser, outfile_sentences, outfile_rule_bar):
     the sequential list:
     (sequential index, tag type, tag index, sentence index in tag, sentence text, rule hits)
 
-    Params: all element lists, including sequential list
-    Return: csv file containing all sentence tokens with rule hits if applicable
-            bar graph showing numbers of rule hits on sentences in policy
+    In:     all element lists, including sequential list.
+    Out:    csv file containing all sentence tokens with rule hits if applicable
+            bar graph showing numbers of rule hits on sentences in policy.
     """
-    parser.rule_vals.update({rule:0 for rule in parser.rule_vals})
+    # parser.rule_hits.update({rule:0 for rule in parser.rule_hits})
     processed_tags = ["p","h"]
     sentences_list = []
 
     # loop through sequential list to build sentences/tuple list
-    for i, element in enumerate(parser.seq_list, start=0):
+    for i, element in enumerate(parser.seq_list, start=0): # for every tag in the sequential list
         if any(tag in element.tag_type for tag in processed_tags):
             sentences = sent_tokenize(element.content_string)
-            for j, sentence in enumerate(sentences, start=0):
-                rule_hits = apply_sentence_rules(parser, sentence)
-                sentence_tuple = (i, element.tag_type, element.tag_index, j, sentence, "-".join(map(str, rule_hits)))
+            for j, sentence in enumerate(sentences, start=0): # for every sentence in each tag
+                rule_hits = apply_sentence_rules(sentence, rule_dict)
+                for name in parser.rule_hits.keys(): # check every rule in the dict
+                    if name in rule_hits: # and increment the parser dict if that key is in the sentence's keys
+                        parser.rule_hits[name] += 1
+                sentence_tuple = (i, element.tag_type, element.tag_index, j, sentence, len(sentence.split()), "-".join(map(str, rule_hits)))
                 sentences_list.append(sentence_tuple)
 
     # write all sentences to single csv file
-    headings = ("Sequential Index","Tag Type", "Tag Index", "Sentence Index in Tag", "Sentence Text", "Rule Hits")
+    headings = ("Sequential Index","Tag Type", "Tag Index", "Sentence Index in Tag", "Sentence Text", "Number of Words" "Rule Hits")
     with open(outfile_sentences,"w") as fp:
         csv_writer = csv.writer(fp)
         csv_writer.writerow(headings)
         csv_writer.writerows(sentences_list)
 
     # create bar graphs of policy's sentence rule hits
-    plt.bar(range(len(parser.rule_vals)), list(parser.rule_vals.values()), align="center")
-    plt.xticks(range(len(parser.rule_vals)), list(parser.rule_vals.keys()), rotation=30, fontsize=8)
-    plt.ylabel("# of Sentences in Policy")
-    plt.savefig(outfile_rule_bar)
+    generate_rule_bar_fig(parser.rule_hits, outfile_rule_bar)
 
 def process_policy(fname):
+    """
+    Entry function for each subprocess.  Reads in the HTML contents and
+    stripped text of the input policy filename, creates all the output
+    files needed for this policy, instantiates a bs4 object and an
+    object to hold statistics about the policy, walks the bs4 tree,
+    outputs each tag-type's list to its own CSV file, then builds
+    the sequential list of all elements in the HTML file, then hands
+    everything off to the sentence extraction phase.
+
+    In:     policy filename.
+    Out:    tuple containing policy rule_hits dict and the filename.
+    """
     with open(dataset_html + fname, "r") as fp:
         html_contents = fp.read()
     with open(dataset_text + fname[:-5] + ".txt", "r") as fp:
@@ -371,7 +268,7 @@ def process_policy(fname):
 
     # walk tree to parse all the beautiful soup tags and build comparison text
     soup = BeautifulSoup(html_contents, "html.parser")
-    parser = ParserData()
+    parser = ParserData(rule_dict)
     walk_tree(soup, parser)
 
     # output the parsed tags to their appropriate files
@@ -415,10 +312,10 @@ def process_policy(fname):
         lock.acquire()
         try:
             with open(parser_output_folder + "success.txt", "a") as fp:
-                fp.write(fname[:-5] + " has " + str(parser.rule_vals["GOOD"]) + " good sentences.\n")
+                fp.write(fname[:-5] + " has " + str(parser.rule_hits["GOOD"]) + " good sentences.\n")
         finally:
             lock.release()
-        return (parser.rule_vals.copy(), fname)
+        return (parser.rule_hits.copy(), fname)
 
 def start_process(i, failed):
     """
@@ -436,6 +333,9 @@ if __name__ == '__main__':
                             help="input dataset of HTML documents to parse and tokenize.")
     argparse.add_argument(  "dataset_text",
                             help="input dataset of text documents scraped from each HTML document.")
+    argparse.add_argument(  "rules",
+                            help="json file containing list of sentence rules.",
+                            action=VerifyJsonExtension)
     argparse.add_argument(  "parser_output_folder",
                             help="directory to dump outputs from the parser (paragraph/header/sequential.csv files, etc.).")
     argparse.add_argument(  "tokenizer_output_folder",
@@ -445,6 +345,7 @@ if __name__ == '__main__':
     dataset_text = args.dataset_text
     parser_output_folder = args.parser_output_folder
     tokenizer_output_folder = args.tokenizer_output_folder
+    rule_dict = build_rule_dict(args.rules)
     mkdir_clean(parser_output_folder)
     mkdir_clean(tokenizer_output_folder)
     timestamp = "_{0:%Y%m%d-%H%M%S}".format(datetime.datetime.now())
@@ -479,7 +380,8 @@ if __name__ == '__main__':
     num_successful_policies = total_files - num_failed_policies.value
 
     print("Generating last rule histogram...")
-    generate_rule_hist_figs(policy_sentence_stats, num_successful_policies)
+    rule_hits_list = [rule_hits for rule_hits,fname in policy_sentence_stats]
+    generate_rule_hist_figs(rule_hits_list, num_successful_policies, rule_dict, tokenizer_output_folder + "rule_hists.png")
 
     print("Successfully parsed " + str(round((num_successful_policies / total_files) * 100, 2)) + "% of the " + str(total_files) + " files.")
     print("Done")

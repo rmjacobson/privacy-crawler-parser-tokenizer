@@ -1,6 +1,21 @@
-import os, requests
+import argparse, os, requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+
+class VerifyJsonExtension(argparse.Action):
+    """
+    Checks the input file that it is actually a file with
+    the .json extension.  Doesn't check to see if the file contains
+    json content, but was the best we could do for the time being.
+    https://stackoverflow.com/a/15203955
+    """
+    def __call__(self,parser,namespace,fname,option_string=None):
+        file = os.path.isfile(fname)
+        json = fname.endswith(".json")
+        if file and json:
+            setattr(namespace,self.dest,fname)
+        else:
+            parser.error("File doesn't end with '.json'")
 
 def print_progress_bar (iteration, total, prefix = "", suffix = "", decimals = 1, length = 100, fill = "█", printEnd = "\r"):
     """
@@ -90,9 +105,9 @@ def request(url, driver):
                 driver.get(url)
                 selenium_res = driver.page_source
             except Exception as e:
-                print("selenium failed " + str(e))
+                return ""
             return selenium_res
     except (exceptions) as e:
-        print("REQUEST PROBLEM: " + e)
+        print("REQUEST PROBLEM: " + str(e))
         return ""
     return requests_res.text

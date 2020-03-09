@@ -110,6 +110,10 @@ def find_policy_links(full_url, html):
                     # Not a proper link
                     if "javascript" in final_link.lower(): continue
                     if len(final_link) < 3: continue
+                    if "mailto:" in final_link.lower(): continue
+                    if link in link_dict:
+                        print("Already visited this link -> skipping")
+                        continue    # we've already visited this link, skip this whole thing
 
                     # This link is complete, add it to our list
                     if "http" in final_link:
@@ -172,15 +176,12 @@ def crawl(domain):
     depth_count = 0
     output_count = 0
     for link in links:
-        if link in link_dict:
-            print("Already visited this link -> skipping")
-            continue    # we've already visited this link, skip this whole thing
         # link_html = request(link, driver)
         link_html = request(link)
         link_contents = strip_text(link_html)
         link_dict[link] = domain
         
-        # checl whether we could even see this policy
+        # check whether we could even see this policy
         if link_contents == "":
             domain_failed_links.append(link)
             retobj.add_link(link, 0.0, "N/A", "N/A", False, False, False)

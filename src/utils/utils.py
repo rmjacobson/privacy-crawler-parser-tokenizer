@@ -1,6 +1,7 @@
 import argparse, os, requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from time import sleep
 
 class VerifyJsonExtension(argparse.Action):
     """
@@ -66,7 +67,41 @@ def start_selenium():
     driver = webdriver.Chrome(options=options)
     return driver
 
-def request(url, driver):
+def get_driver():
+    """
+    Instatiate a selenium Chrome webdriver, return it.
+
+    In:     n/a
+    Out:    selenium headless webdriver
+    """
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')
+    driver = webdriver.Chrome(chrome_options=options)
+    return driver
+
+def selenium_get(url):
+    """
+    requests library failed, so instantiate a full selenium web browser
+    """
+    ret = ""
+    driver = get_driver()
+    connection_attempts = 0
+    while connection_attempts < 2:
+        try:
+            driver.get(base_url)
+            if "privacy" in driver.page_source:
+                ret = driver.page_source
+            break
+        except Exception as e:
+            sleep(2)
+            connection_attempts += 1
+    driver.quit()
+    if ret == "":
+        print("\tselenium failed for " + url + " -> failed")
+    return ret
+
+# def request(url, driver):
+def request(url):
     """
     Makes a simple HTTP request to the specified url and returns its
     contents. Note: the webdriver is started and closed in the file
@@ -78,6 +113,7 @@ def request(url, driver):
     Out:    content of the http request
     """
     exceptions = (requests.exceptions.ReadTimeout,
+                  requests.exceptions.ConnectTimeout,
                   requests.ConnectionError,
                   requests.ConnectTimeout,
                   ConnectionError,
@@ -97,16 +133,24 @@ def request(url, driver):
             "Accept-Language": accept_language,
             "Accept-Encoding": accept_encoding
         }
-        requests_res = requests.get(url, headers=headers)
+        requests_res = requests.get(url, headers=headers, timeout=(3,6))
         if not requests_res:
             print("requests failed for " + url + " -> trying selenium")
-            selenium_res = ""
-            try:
-                driver.get(url)
-                selenium_res = driver.page_source
-            except Exception as e:
-                return ""
-            return selenium_res
+            return selenium_get(url)
+
+            # selenium_res = ""
+            # try:
+            #     driver.get(url)
+            #     selenium_res = driver.page_source
+            # except Exception as e:
+            #     return ""
+            # return selenium_res
+    except requests.exceptions.ConnectionError as e:
+        if e.args[0].reason.errno == 61:
+            print("REQUESTS connection refused for " + url + " -> trying selenium")
+        if e.args[0].reason.errno == 60:
+            print("REQUESTS connection timeout for " + url + " -> trying selenium")
+        return selenium_get(url)
     except (exceptions) as e:
         print("REQUEST PROBLEM: " + str(e))
         return ""

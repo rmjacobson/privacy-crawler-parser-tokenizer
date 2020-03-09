@@ -1,6 +1,5 @@
 python src/crawler.py \
-	-n 5 \
-	data/inputs/alexa_top_10K.json \
+	data/inputs/alexa.json \
 	data/inputs/ground_truth_html/ \
 	data/inputs/dictionary.txt \
 	0.6 \

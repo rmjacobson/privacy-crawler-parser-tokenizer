@@ -145,7 +145,8 @@ def crawl(domain):
     # first get the domain landing page via HTTPS
     full_url = domain if ("http" in domain) else "http://" + domain
     full_url = full_url if ("https://" in full_url) else full_url.replace("http://", "https://")
-    domain_html = request(full_url, driver)
+    # domain_html = request(full_url, driver)
+    domain_html = request(full_url)
     if strip_text(domain_html) == "":
         failed_access_domain = CrawlReturn(domain, False)
         failed_access_domains.append(failed_access_domain)
@@ -171,8 +172,13 @@ def crawl(domain):
     depth_count = 0
     output_count = 0
     for link in links:
-        link_html = request(link, driver)
+        if link in link_dict:
+            print("Already visited this link -> skipping")
+            continue    # we've already visited this link, skip this whole thing
+        # link_html = request(link, driver)
+        link_html = request(link)
         link_contents = strip_text(link_html)
+        link_dict[link] = domain
         
         # checl whether we could even see this policy
         if link_contents == "":
@@ -332,7 +338,8 @@ if __name__ == '__main__':
     failed_link_domains = shared_manager.list()    # domains with no valid links
     failed_access_domains = shared_manager.list()  # domains where the initial access failed
     policy_dict = shared_manager.dict()            # hashmap of all texts to quickly detect duplicates
-    driver = start_selenium()
+    link_dict = shared_manager.dict()              # hashmap of all links to detect duplicates without visiting them
+    # driver = start_selenium()
 
     # start process pool
     pool_size = cpu_count() * 2
@@ -345,7 +352,7 @@ if __name__ == '__main__':
     all_links = pool.map(crawl, domain_list)    # map keeps domain_list order
     pool.close()  # no more tasks
     pool.join()   # merge all child processes
-    driver.close()  # close headless selenium browser
+    # driver.close()  # close headless selenium browser
 
     # produce summary output files
     print("Generating summary information...")

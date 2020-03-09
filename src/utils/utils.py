@@ -1,4 +1,7 @@
 import argparse, os, requests
+from urllib3.exceptions import NewConnectionError
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from time import sleep
@@ -133,6 +136,11 @@ def request(url):
             "Accept-Language": accept_language,
             "Accept-Encoding": accept_encoding
         }
+        s = requests.Session()
+        # retry = Retry(connect = 5, backoff_factor = 1)
+        # adapter = HTTPAdapter(max_retries = retry)
+        # s.mount('http:s//', adapter)
+        # s.keep_alive = False
         requests_res = requests.get(url, headers=headers, timeout=(3,6))
         if not requests_res:
             print("requests failed for " + url + " -> trying selenium")
@@ -145,13 +153,21 @@ def request(url):
             # except Exception as e:
             #     return ""
             # return selenium_res
+    # except request.exceptions.ConnectionRefusedError:
+    #     print("REQUESTS cannot make connection for " + url + " -> trying selenium")
+    #     return selenium_get(url)
     except requests.exceptions.ConnectionError as e:
-        if e.args[0].reason.errno == 61:
-            print("REQUESTS connection refused for " + url + " -> trying selenium")
-        if e.args[0].reason.errno == 60:
-            print("REQUESTS connection timeout for " + url + " -> trying selenium")
+        print("REQUESTS connection refused for " + url + " -> trying selenium")
+        # if e == NewConnectionError:
+        #     print("REQUESTS cannot make connection for " + url + " -> trying selenium")
+        # if e.args[0].reason.errno == 61:
+        #     print("REQUESTS connection refused for " + url + " -> trying selenium")
+        # if e.args[0].reason.errno == 60:
+            # print("REQUESTS connection timeout for " + url + " -> trying selenium")
         return selenium_get(url)
     except (exceptions) as e:
         print("REQUEST PROBLEM: " + str(e))
         return ""
+    except Exception as e:
+        print("UNKNOWN PROBLEM: " + str(e))
     return requests_res.text

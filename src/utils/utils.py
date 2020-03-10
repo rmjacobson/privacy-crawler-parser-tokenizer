@@ -82,14 +82,15 @@ def get_driver():
     driver = webdriver.Chrome(chrome_options=options)
     return driver
 
-def selenium_get(url):
+def selenium_get(url, driver):
     """
     requests library failed, so instantiate a full selenium web browser
     """
     ret = ""
-    driver = get_driver()
+    # driver = get_driver()
     connection_attempts = 0
     while connection_attempts < 2:
+        sleep(2)
         try:
             driver.get(base_url)
             if "privacy" in driver.page_source:
@@ -98,9 +99,12 @@ def selenium_get(url):
         except Exception as e:
             sleep(2)
             connection_attempts += 1
-    driver.quit()
+    # driver.close()
+    # driver.quit()
     if ret == "":
         print("\tselenium failed for " + url + " -> failed")
+    else:
+        print("\tselenium SUCCESS! for " + url)
     return ret
 
 # def request(url, driver):
@@ -115,6 +119,7 @@ def request(url):
             headless - boolean indicating whether we will use the headless
     Out:    content of the http request
     """
+    requests_res = ""
     exceptions = (requests.exceptions.ReadTimeout,
                   requests.exceptions.ConnectTimeout,
                   requests.ConnectionError,
@@ -136,15 +141,17 @@ def request(url):
             "Accept-Language": accept_language,
             "Accept-Encoding": accept_encoding
         }
-        s = requests.Session()
+        # s = requests.Session()
         # retry = Retry(connect = 5, backoff_factor = 1)
         # adapter = HTTPAdapter(max_retries = retry)
         # s.mount('http:s//', adapter)
         # s.keep_alive = False
         requests_res = requests.get(url, headers=headers, timeout=(3,6))
+        requests_res = requests_res.text
         if not requests_res:
-            print("requests failed for " + url + " -> trying selenium")
-            return selenium_get(url)
+            # print("requests failed for " + url + " -> trying selenium")
+            print("requests failed for " + url)
+            # return selenium_get(url, driver)
 
             # selenium_res = ""
             # try:
@@ -155,19 +162,20 @@ def request(url):
             # return selenium_res
     # except request.exceptions.ConnectionRefusedError:
     #     print("REQUESTS cannot make connection for " + url + " -> trying selenium")
-    #     return selenium_get(url)
+    #     return selenium_get(url, driver)
     except requests.exceptions.ConnectionError as e:
-        print("REQUESTS connection refused for " + url + " -> trying selenium")
+        # print("REQUESTS connection refused for " + url + " -> trying selenium")
+        print("REQUESTS connection refused for " + url)
         # if e == NewConnectionError:
         #     print("REQUESTS cannot make connection for " + url + " -> trying selenium")
         # if e.args[0].reason.errno == 61:
         #     print("REQUESTS connection refused for " + url + " -> trying selenium")
         # if e.args[0].reason.errno == 60:
             # print("REQUESTS connection timeout for " + url + " -> trying selenium")
-        return selenium_get(url)
+        # return selenium_get(url, driver)
     except (exceptions) as e:
         print("REQUEST PROBLEM: " + str(e))
         return ""
     except Exception as e:
         print("UNKNOWN PROBLEM: " + str(e))
-    return requests_res.text
+    return requests_res

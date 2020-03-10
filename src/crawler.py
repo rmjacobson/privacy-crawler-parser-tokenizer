@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 from multiprocessing import Pool, Value, cpu_count, current_process, Manager
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from utils.utils import print_progress_bar, request, start_selenium, VerifyJsonExtension
+from utils.utils import print_progress_bar, request, get_driver, VerifyJsonExtension
 from verification.verify import get_ground_truth, is_duplicate_policy, is_english, mkdir_clean, strip_text
 
 PRIVACY_POLICY_KEYWORDS = ["privacy"]
@@ -107,13 +107,17 @@ def find_policy_links(full_url, html):
                 if (kw in str(link.string).lower()) or (kw in str(link["href"]).lower()):
                     final_link = link["href"]
 
+                    if final_link in link_dict:
+                        link_dict[final_link] += 1
+                        # print("Already visited this link -> skipping")
+                        continue    # we've already visited this link, skip this whole thing
+                    else:
+                        link_dict[final_link] = 0
+
                     # Not a proper link
                     if "javascript" in final_link.lower(): continue
                     if len(final_link) < 3: continue
                     if "mailto:" in final_link.lower(): continue
-                    if link in link_dict:
-                        print("Already visited this link -> skipping")
-                        continue    # we've already visited this link, skip this whole thing
 
                     # This link is complete, add it to our list
                     if "http" in final_link:
@@ -148,7 +152,7 @@ def crawl(domain):
     """
     # first get the domain landing page via HTTPS
     full_url = domain if ("http" in domain) else "http://" + domain
-    full_url = full_url if ("https://" in full_url) else full_url.replace("http://", "https://")
+    # full_url = full_url if ("https://" in full_url) else full_url.replace("http://", "https://")
     # domain_html = request(full_url, driver)
     domain_html = request(full_url)
     if strip_text(domain_html) == "":
@@ -179,7 +183,8 @@ def crawl(domain):
         # link_html = request(link, driver)
         link_html = request(link)
         link_contents = strip_text(link_html)
-        link_dict[link] = domain
+        # link_dict[link] = domain
+        # print(link_dict)
         
         # check whether we could even see this policy
         if link_contents == "":
@@ -283,8 +288,10 @@ def start_process(i):
     Ignore SIGINT in child workers, will be handled to enable restart.
     """
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    global index
-    index = i
+    # global index
+    # index = i
+    # global driver
+    # driver = get_driver()
 
 if __name__ == '__main__':
     argparse = argparse.ArgumentParser(description="Crawls provided domains to gather privacy policy html files.")
@@ -322,6 +329,8 @@ if __name__ == '__main__':
     mkdir_clean(html_outfolder)
     mkdir_clean(stripped_outfolder)
     summary_outfile = args.html_outfolder + "../summary.txt"
+    sys.setrecursionlimit(10**6)
+
     # get domain list and verification ground truth
     with open(domain_list_file, "r") as fp:
         domain_list = list(json.load(fp).values())

@@ -267,7 +267,11 @@ def process_policy(fname):
     outfile_sentences = tokenizer_output_folder + fname[:-5] + timestamp + "_sentences.csv"
 
     # walk tree to parse all the beautiful soup tags and build comparison text
-    soup = BeautifulSoup(html_contents, "html.parser")
+    try:
+        soup = BeautifulSoup(html_contents, "html.parser")
+    except Exception as e:
+        print("Skipping " + fname + " because it can't be read by BeautifulSoup.")
+        return None   # if there's no soup, we don't care
     parser = ParserData(rule_dict)
     walk_tree(soup, parser)
 

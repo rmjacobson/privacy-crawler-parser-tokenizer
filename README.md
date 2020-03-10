@@ -47,6 +47,6 @@ following line to ~/.bash_profile and reload the shell.
 ```
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 ```
-Source: https://stackoverflow.com/questions/50168647/multiprocessing-causes-python-to-crash-and-gives-an-error-may-have-been-in-progr
+Source: https://stackoverflow.com/a/52230415
 
 If you are on macOS, you may need to allow Python unlimited access through the firewall.

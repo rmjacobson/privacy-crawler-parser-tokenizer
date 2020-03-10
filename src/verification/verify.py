@@ -77,8 +77,12 @@ def strip_text(html):
     Out:    string containing text of visible policy text
     """
     if html == "":
-        return ""
-    soup = BeautifulSoup(html, "html.parser")
+        return ""   # return nothing if there is nothing
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception as e:
+        return ""   # if there's no soup, we don't care
+    
     
     # Remove all script and style elements
     bad_tags = ["style", "script", "noscript", "head", "title", "meta", 

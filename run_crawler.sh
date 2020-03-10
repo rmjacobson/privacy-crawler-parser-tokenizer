@@ -3,6 +3,6 @@ python src/crawler.py \
 	data/inputs/ground_truth_html/ \
 	data/inputs/dictionary.txt \
 	0.6 \
-	3 \
+	2 \
 	data/crawler_output/html/ \
 	data/crawler_output/stripped_text/

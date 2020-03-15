@@ -38,7 +38,7 @@ def build_rule_dict(file):
     for name in rule_dict:
         if name == "HEAD_FRAG":
             continue
-        rule_dict[name] = re.compile(rule_dict[name])
+        rule_dict[name][0] = re.compile(rule_dict[name][0])
     return rule_dict
 
 def is_header_fragment(sentence, threshold):
@@ -68,13 +68,17 @@ def apply_sentence_rules(sentence, rule_dict):
     In:     sentence string, rule dictionary of regexs.
     Out:    list of rule names that apply to the sentence.
     """
+    # print(sentence)
     rule_hits = []
     for name, rule in rule_dict.items():
         if name == "HEAD_FRAG":
-            if is_header_fragment(sentence, rule_dict[name]):
+            if is_header_fragment(sentence, rule_dict[name][0]):
                 rule_hits.append(name)
             continue
-        if rule.match(sentence):
+        if rule[1] == "True" and rule[0].match(sentence):
+            hit = True
+            rule_hits.append(name)
+        if rule[1] == "False" and not rule[0].match(sentence):
             hit = True
             rule_hits.append(name)
     if len(rule_hits) == 0:

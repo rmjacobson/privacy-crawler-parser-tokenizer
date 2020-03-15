@@ -11,6 +11,7 @@ import argparse, csv, datetime, matplotlib, matplotlib.pyplot as plt, nltk, os, 
 from multiprocessing import Pool, Lock, Value, cpu_count
 from nltk.tokenize import sent_tokenize
 from utils.utils import mkdir_clean, print_progress_bar, VerifyJsonExtension
+from verification.verify import remove_bad_tags
 from statistics.sentences import apply_sentence_rules, build_rule_dict, generate_rule_bar_fig, generate_rule_hist_figs
 
 class SequentialElement:
@@ -28,7 +29,7 @@ class ParserData:
     data structure is initialized to be empty at start of every
     parsing process.
     """
-    def __init__(self, rule_dict):  
+    def __init__(self, rule_dict):
         self.seq_list = []
         self.paragraph_list = []
         self.header_list = []
@@ -44,12 +45,6 @@ def skip_tag(element):
     In:     element - bs4 tag
     Out:    Boolean: True if tag is irrelevant, False if tag is relevant
     """
-    if element.name in ["style", "script", "noscript", "head", "title", "meta", "[document]", "img", "iframe"]:
-        # this is an "invisible" tag the reader would not see
-        return True
-    if element.name in ["header", "footer", "nav"]:
-        # this is a "skipped" tag
-        return True
     if isinstance(element, Comment):
         # this is a commnent in the HTML code
         return True
@@ -273,7 +268,7 @@ def process_policy(fname):
         print("Skipping " + fname + " because it can't be read by BeautifulSoup.")
         return None   # if there's no soup, we don't care
     parser = ParserData(rule_dict)
-    walk_tree(soup, parser)
+    walk_tree(remove_bad_tags(soup), parser)
 
     # output the parsed tags to their appropriate files
     if len(parser.paragraph_list) > 0:

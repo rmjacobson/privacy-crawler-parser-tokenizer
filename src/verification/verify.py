@@ -10,7 +10,7 @@ Currently seems like ~60% is the cutoff.
 import argparse, datetime, matplotlib, os, pandas as pd, re, signal
 from multiprocessing import Pool, Value, cpu_count, Manager
 import matplotlib.pyplot as plt
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment, NavigableString
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from utils.utils import mkdir_clean, print_progress_bar, request
@@ -67,6 +67,20 @@ def is_english(dictionary, html_contents, wordPercentage=50, charPercentage=85):
     lettersMatch = html_contentsLettersPercentage >= charPercentage
     return wordsMatch and lettersMatch
 
+def remove_bad_tags(soup):
+    """
+    Removes script and style elements from the soup to ensure we don't
+    look at these when we don't need to.
+
+    In:     BeatifulSoup tree object.
+    Out:    cleaned version of that BeatifulSoup tree object.
+    """
+    bad_tags = ["style", "script", "noscript", "head", "title", "meta", 
+                "[document]", "img", "iframe", "header", "footer", "nav"]
+    for tag in soup(bad_tags):
+        tag.decompose()
+    return soup
+
 def strip_text(html):
     """
     This function takes in a html document represented as a string and
@@ -85,10 +99,7 @@ def strip_text(html):
     
     
     # Remove all script and style elements
-    bad_tags = ["style", "script", "noscript", "head", "title", "meta", 
-                "[document]", "img", "iframe", "header", "footer", "nav"]
-    for ignored_tag in soup(bad_tags):
-        ignored_tag.decompose()
+    soup = remove_bad_tags(soup)
 
     return " ".join([text for text in soup.stripped_strings])
 

@@ -23,3 +23,13 @@ linked in this project, this particular command _*must be run from the
 ```
 python -m statistics.sentences 4 ../data/inputs/rules.json ../data/parser_output/
 ```
+## Example Run of lists.py
+An example run with a sample size of 4 policies is shown below. Please
+note that due to the nature of Python modules and the way modules are
+linked in this project, this particular command _*must be run from the 
+`src/` directory of this repository*_. Also note that the `-n` option
+may be omitted from this command if you would like to set the sample
+size to the entire Parser output.
+```
+python -m statistics.get_list_stats -n 4 ../data/parser_output/
+```

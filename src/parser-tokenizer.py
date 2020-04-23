@@ -34,6 +34,7 @@ class ParserData:
         self.paragraph_list = []
         self.header_list = []
         self.list_list = []
+        self.sentence_lengths = []
         self.rule_hits = rule_dict.copy()
         self.rule_hits = self.rule_hits.fromkeys(self.rule_hits, 0)
         self.rule_hits["GOOD"] = 0
@@ -207,17 +208,26 @@ def extract_sentences(parser, outfile_sentences, outfile_rule_bar):
     # loop through sequential list to build sentences/tuple list
     for i, element in enumerate(parser.seq_list, start=0): # for every tag in the sequential list
         if any(tag in element.tag_type for tag in processed_tags):
+            try:
+                prec_by = parser.seq_list[i-1].tag_type + str(parser.seq_list[i-1].tag_index)
+            except IndexError as e:
+                prec_by = "None"
+            try:
+                proc_by = str(parser.seq_list[i+1].tag_type + str(parser.seq_list[i+1].tag_index))
+            except IndexError as e:
+                proc_by = "None"
             sentences = sent_tokenize(element.content_string)
             for j, sentence in enumerate(sentences, start=0): # for every sentence in each tag
                 rule_hits = apply_sentence_rules(sentence, rule_dict)
                 for name in parser.rule_hits.keys(): # check every rule in the dict
                     if name in rule_hits: # and increment the parser dict if that key is in the sentence's keys
                         parser.rule_hits[name] += 1
-                sentence_tuple = (i, element.tag_type, element.tag_index, j, sentence, len(sentence.split()), "-".join(map(str, rule_hits)))
+                sentence_tuple = (i, element.tag_type + str(element.tag_index), prec_by, proc_by, j, sentence, len(sentence.split()), "-".join(map(str, rule_hits)))
                 sentences_list.append(sentence_tuple)
+                parser.sentence_lengths.append(len(sentence.split()))
 
     # write all sentences to single csv file
-    headings = ("Sequential Index","Tag Type", "Tag Index", "Sentence Index in Tag", "Sentence Text", "Number of Words" "Rule Hits")
+    headings = ("Sequential Index","Tag Type-Index", "Tag Preceeded By", "Tag Proceeded By", "Sentence Index in Tag", "Sentence Text", "Number of Words in Sentence", "Rule Hits")
     with open(outfile_sentences,"w") as fp:
         csv_writer = csv.writer(fp)
         csv_writer.writerow(headings)
@@ -314,7 +324,7 @@ def process_policy(fname):
                 fp.write(fname[:-5] + " has " + str(parser.rule_hits["GOOD"]) + " good sentences.\n")
         finally:
             lock.release()
-        return (parser.rule_hits.copy(), fname)
+        return (parser.rule_hits.copy(), fname, parser.sentence_lengths)
 
 def start_process(i, failed):
     """
@@ -379,8 +389,9 @@ if __name__ == '__main__':
     num_successful_policies = total_files - num_failed_policies.value
 
     print("Generating last rule histogram...")
-    rule_hits_list = [rule_hits for rule_hits,fname in policy_sentence_stats]
-    generate_rule_hist_figs(rule_hits_list, num_successful_policies, rule_dict, tokenizer_output_folder + "rule_hists.png")
+    rule_hits_list = [rule_hits for rule_hits,fname,sentence_lengths in policy_sentence_stats]
+    lengths_list = [sentence_lengths for rule_hits,fname,sentence_lengths in policy_sentence_stats]
+    generate_rule_hist_figs(files, rule_hits_list, lengths_list, num_successful_policies, rule_dict, tokenizer_output_folder + "rule_hists.png")
 
     print("Successfully parsed " + str(round((num_successful_policies / total_files) * 100, 2)) + "% of the " + str(total_files) + " files.")
     print("Done")

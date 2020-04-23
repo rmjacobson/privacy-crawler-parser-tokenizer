@@ -1,7 +1,8 @@
 {
-"START_CAP": ["^(?![A-Z]).*", "True"],
+"SHORT": [5, "True"],
+"START_CAP": ["^[A-Z].*", "False"],
 "PRE_NOISE": ["^((\\d+)|(\\d(\\.|\\-)\\d)|(\\d(\\.|\\-)\\d(\\.|\\-)\\d))(:|\\.)?\\s([A-Z]\\w+.*?)", "True"],
-"END_PUNC": ["[!?.]+(?=$|\\w[!?.])", "False"],
+"END_PUNC": [".*[!?.]", "False"],
 "HEAD_FRAG": [0.6, "True"],
-"META": ["^<META:.*/META$>", "True"]
+"META": ["<META:.*/META>", "True"]
 }

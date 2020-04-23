@@ -52,7 +52,11 @@ statistics of rule-violations as a whole over the dataset.
 
 ## S3 Bucket for Output Files
 
-Placeholder for later extension.
+You can find a .zip archive of all the outputs described above at this
+s3 link: https://deep-ner-parsing.s3.us-east-2.amazonaws.com/data.zip.
+
+This data will be updated as the project nears completion, so please
+continue to look at this link for more recent data.
 
 ## Alexa Top Sites
 Alexa Top Sites is a service offered by Amazon to rank websites by
